@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
+    # ── App ──────────────────────────────────────────────────────────────────
+    APP_ENV: Literal["dev", "prod"] = "dev"
+    APP_HOST: str = "0.0.0.0"
+    APP_PORT: int = 8000
+    # Public-facing HTTPS base URL (no trailing slash).
+    # Used to build the Telegram webhook URL: APP_PUBLIC_BASE_URL + ACCESS_BOT_WEBHOOK_PATH
+    APP_PUBLIC_BASE_URL: str
+
+    # ── Database ─────────────────────────────────────────────────────────────
+    # Railway injects postgres:// — normalised automatically to postgresql+asyncpg://
+    DATABASE_URL: str
+
+    # ── Access Bot ───────────────────────────────────────────────────────────
+    ACCESS_BOT_TOKEN: str
+    ACCESS_BOT_WEBHOOK_PATH: str = "/tg/access/webhook"
+    # Passed to Telegram setWebhook as secret_token; validated on every update.
+    ACCESS_BOT_SECRET_TOKEN: str
+
+    # ── Telegram channel ─────────────────────────────────────────────────────
+    TG_CHANNEL_ID: int  # numeric, e.g. -1001234567890
+
+    # ── Invite / join window ─────────────────────────────────────────────────
+    INVITE_TTL_SECONDS: int = 600
+    JOIN_WINDOW_SECONDS: int = 600  # how long after payment a join request is approved
+
+    # ── Kick on expire ───────────────────────────────────────────────────────
+    KICK_ON_EXPIRE: bool = False
+    KICK_GRACE_SECONDS: int = 0  # extra grace after active_until before kicking
+    KICK_CRON_SECONDS: int = 3600  # how often the kick job runs
+
+    # ── Lava.top ─────────────────────────────────────────────────────────────
+    LAVA_WEBHOOK_PATH: str = "/lava/webhook"
+    # HMAC-SHA256 signing secret from Lava dashboard.
+    LAVA_SECRET: str
+
+    # Lava offer IDs → mapped to club access durations.
+    # Each env var holds the offer/product ID from your Lava dashboard.
+    # All four grant access to the same channel — only the duration differs.
+    LAVA_OFFER_CLUB_1M: str = ""   # 1-month club product
+    LAVA_OFFER_CLUB_3M: str = ""   # 3-month club product
+    LAVA_OFFER_CLUB_6M: str = ""   # 6-month club product
+    LAVA_OFFER_CLUB_12M: str = ""  # 12-month club product
+
+    @property
+    def lava_product_map(self) -> dict[str, int]:
+        """
+        Map Lava offer ID → duration in days.
+
+        Only includes offers with a non-empty ID, so you can deploy
+        with just a subset of products configured.
+        """
+        mapping: dict[str, int] = {}
+        for offer_id, days in [
+            (self.LAVA_OFFER_CLUB_1M, 30),
+            (self.LAVA_OFFER_CLUB_3M, 90),
+            (self.LAVA_OFFER_CLUB_6M, 180),
+            (self.LAVA_OFFER_CLUB_12M, 365),
+        ]:
+            if offer_id:
+                mapping[offer_id] = days
+        return mapping
+
+    # ── Admin ────────────────────────────────────────────────────────────────
+    ADMIN_TOKEN: str
+
+    # ── Observability ────────────────────────────────────────────────────────
+    LOG_LEVEL: str = "INFO"
+    SENTRY_DSN: str | None = None
+
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalise_db_url(cls, v: str) -> str:
+        """Rewrite postgres(ql):// → postgresql+asyncpg:// for asyncpg driver."""
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgresql://") and "+asyncpg" not in v:
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "${APP_PORT:-8000}:${APP_PORT:-8000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Override CMD for local dev: hot-reload + skip migrations (run manually)
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-8000} --reload
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: easysteps
+      POSTGRES_PASSWORD: easysteps
+      POSTGRES_DB: easysteps
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easysteps -d easysteps"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
