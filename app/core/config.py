@@ -47,8 +47,10 @@ class Settings(BaseSettings):
 
     # ── Lava.top ─────────────────────────────────────────────────────────────
     LAVA_WEBHOOK_PATH: str = "/lava/webhook"
-    # HMAC-SHA256 signing secret from Lava dashboard.
-    LAVA_SECRET: str
+    # Basic Auth credentials for Lava webhook verification.
+    # You set these in the Lava dashboard when creating the webhook.
+    LAVA_WEBHOOK_LOGIN: str
+    LAVA_WEBHOOK_PASSWORD: str
 
     # Lava offer IDs → mapped to club access durations.
     # Each env var holds the offer/product ID from your Lava dashboard.

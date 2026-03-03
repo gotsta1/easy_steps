@@ -6,7 +6,7 @@ attached to a router) that is registered in main.py at the path configured
 by ``LAVA_WEBHOOK_PATH``.
 
 Flow for digital product purchases:
-  1. Verify HMAC-SHA256 signature.
+  1. Verify Basic Auth credentials.
   2. Store event in lava_events for idempotency.
   3. Classify event type.
   4. Identify the Telegram user from the payload.
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_entitlement_service
 from app.core.config import Settings, get_settings
-from app.core.security import verify_lava_signature
+from app.core.security import verify_lava_basic_auth
 from app.db.repo import LavaEventRepo
 from app.db.session import get_db
 from app.services import lava as lava_svc
@@ -43,10 +43,12 @@ async def lava_webhook_handler(
     We return 200 on all outcomes (including unmatched users) so that Lava
     does not endlessly retry.  Failures are logged for manual investigation.
     """
-    # ── 1. Signature verification ────────────────────────────────────────────
-    if not await verify_lava_signature(request, settings.LAVA_SECRET):
-        logger.error("lava_invalid_signature remote=%s", request.client)
-        return {"status": "signature_invalid"}
+    # ── 1. Basic Auth verification ────────────────────────────────────────────
+    if not await verify_lava_basic_auth(
+        request, settings.LAVA_WEBHOOK_LOGIN, settings.LAVA_WEBHOOK_PASSWORD
+    ):
+        logger.error("lava_auth_failed remote=%s", request.client)
+        return {"status": "auth_failed"}
 
     payload: dict = await request.json()
     logger.info("lava_webhook_received keys=%s", list(payload.keys()))

@@ -1,49 +1,44 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
+import base64
 import logging
+import secrets
 
 from fastapi import Request
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Lava.top signature verification
-#
-# Lava's exact signing scheme is not fully documented at time of writing.
-# The implementation below uses HMAC-SHA256 over the raw request body, keyed
-# with LAVA_SECRET, comparing against the value in the "X-Signature" header.
-#
-# HOW TO ADJUST:
-#   • Change SIGNATURE_HEADER to the actual header name Lava sends.
-#   • Replace compute_hmac_sha256 body with the correct algorithm if Lava uses
-#     a different scheme (e.g. SHA-1, RSA-SHA256, or a query-string digest).
-#   • In production, switch the early-return status to 401 once confirmed.
-# ─────────────────────────────────────────────────────────────────────────────
 
-SIGNATURE_HEADER = "X-Signature"  # TODO: confirm with Lava docs
-
-
-def compute_hmac_sha256(secret: str, raw_body: bytes) -> str:
-    return hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-
-
-async def verify_lava_signature(request: Request, secret: str) -> bool:
-    """Return True if the request carries a valid Lava signature."""
-    provided = request.headers.get(SIGNATURE_HEADER)
-    if not provided:
-        logger.warning("lava_signature_header_missing header=%s", SIGNATURE_HEADER)
+async def verify_lava_basic_auth(
+    request: Request, expected_login: str, expected_password: str
+) -> bool:
+    """Return True if the request carries valid Basic Auth credentials matching Lava config."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        logger.warning("lava_auth_header_missing")
         return False
 
-    # body() caches the result; safe to call multiple times in the same request.
-    raw_body = await request.body()
-    expected = compute_hmac_sha256(secret, raw_body)
+    if not auth_header.startswith("Basic "):
+        logger.warning("lava_auth_not_basic")
+        return False
 
-    valid = hmac.compare_digest(provided.lower(), expected.lower())
-    if not valid:
-        logger.warning(
-            "lava_signature_mismatch provided_prefix=%s",
-            provided[:12] + "…",
-        )
-    return valid
+    try:
+        decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+    except Exception:
+        logger.warning("lava_auth_decode_failed")
+        return False
+
+    if ":" not in decoded:
+        logger.warning("lava_auth_bad_format")
+        return False
+
+    login, password = decoded.split(":", 1)
+
+    login_ok = secrets.compare_digest(login, expected_login)
+    password_ok = secrets.compare_digest(password, expected_password)
+
+    if not (login_ok and password_ok):
+        logger.warning("lava_auth_invalid_credentials")
+        return False
+
+    return True
