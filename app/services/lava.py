@@ -80,7 +80,7 @@ def extract_event_type(payload: dict[str, Any]) -> str:
     TODO: confirm the exact field name from Lava docs.
     Candidates: ``type``, ``event``, ``event_type``, ``action``.
     """
-    for field in ("type", "event", "event_type", "action"):
+    for field in ("eventType", "type", "event", "event_type", "action"):
         if val := payload.get(field):
             return str(val)
     logger.warning("lava_event_type_not_found keys=%s", list(payload.keys()))
