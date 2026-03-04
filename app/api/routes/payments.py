@@ -10,7 +10,7 @@ import logging
 
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_entitlement_service, require_admin_token
@@ -45,6 +45,11 @@ _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
 class CreatePaymentRequest(BaseModel):
     telegram_user_id: int
     plan: str  # "1m", "3m", "6m", "12m"
+
+    @field_validator("telegram_user_id", mode="before")
+    @classmethod
+    def coerce_telegram_id(cls, v):  # noqa: N805
+        return int(v)
 
 
 class CreatePaymentResponse(BaseModel):
@@ -122,6 +127,11 @@ async def create_payment(
 
 class CheckPaymentRequest(BaseModel):
     telegram_user_id: int
+
+    @field_validator("telegram_user_id", mode="before")
+    @classmethod
+    def coerce_telegram_id(cls, v):  # noqa: N805
+        return int(v)
 
 
 class CheckPaymentResponse(BaseModel):
