@@ -61,7 +61,6 @@ class CreatePaymentResponse(BaseModel):
 
 @router.post("/create", response_model=CreatePaymentResponse)
 async def create_payment(
-    request: Request,
     body: CreatePaymentRequest,
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
