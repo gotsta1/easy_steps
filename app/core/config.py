@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     KICK_GRACE_SECONDS: int = 0  # extra grace after active_until before kicking
     KICK_CRON_SECONDS: int = 3600  # how often the kick job runs
 
+    # ── BotHelp API (expiry notifications) ────────────────────────────────────
+    BOTHELP_CLIENT_ID: str = ""
+    BOTHELP_CLIENT_SECRET: str = ""
+    BOTHELP_BOT_REFERRAL: str = ""           # referral бота в BotHelp
+    BOTHELP_STEP_NOTIFY_3D: str = ""         # step referral: "осталось 3 дня"
+    BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
+    BOTHELP_STEP_NOTIFY_1D: str = ""         # step referral: "остался 1 день"
+
     # ── Lava.top ─────────────────────────────────────────────────────────────
     LAVA_WEBHOOK_PATH: str = "/lava/webhook"
     # Basic Auth credentials for Lava webhook verification.
@@ -81,6 +89,19 @@ class Settings(BaseSettings):
         ]:
             if offer_id:
                 mapping[offer_id] = days
+        return mapping
+
+    @property
+    def notify_steps_map(self) -> dict[int, str]:
+        """Map days-before-expiry → BotHelp step referral. Only configured steps."""
+        mapping: dict[int, str] = {}
+        for days, step in [
+            (3, self.BOTHELP_STEP_NOTIFY_3D),
+            (2, self.BOTHELP_STEP_NOTIFY_2D),
+            (1, self.BOTHELP_STEP_NOTIFY_1D),
+        ]:
+            if step:
+                mapping[days] = step
         return mapping
 
     # ── Admin ────────────────────────────────────────────────────────────────

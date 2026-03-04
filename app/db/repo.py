@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -97,11 +98,37 @@ class EntitlementRepo:
             ent.status = status
             ent.updated_at = now
             if active_until is not None:
+                if ent.active_until is None or active_until > ent.active_until:
+                    ent.expiry_notified_days = None  # reset notifications on renewal
                 ent.active_until = active_until
             if allowed_to_join_until is not None:
                 ent.allowed_to_join_until = allowed_to_join_until
         await self._db.flush()
         return ent
+
+    async def get_expiring_soon(
+        self, now: datetime, days: int
+    ) -> list[Entitlement]:
+        """
+        Return active entitlements expiring within ``days`` days from ``now``
+        that haven't been notified for this threshold yet.
+        """
+        from datetime import timedelta
+
+        deadline = now + timedelta(days=days)
+        result = await self._db.execute(
+            select(Entitlement).where(
+                Entitlement.status == EntitlementStatus.active,
+                Entitlement.active_until.isnot(None),
+                Entitlement.active_until > now,
+                Entitlement.active_until <= deadline,
+                sa.or_(
+                    Entitlement.expiry_notified_days.is_(None),
+                    Entitlement.expiry_notified_days > days,
+                ),
+            )
+        )
+        return list(result.scalars().all())
 
     async def get_expired_active(self, cutoff: datetime) -> list[Entitlement]:
         """

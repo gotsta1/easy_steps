@@ -164,13 +164,69 @@ async def _set_telegram_webhook(settings: Settings, bot) -> None:
 
 
 async def _kick_loop(settings: Settings) -> None:
-    """Background task: periodically kick expired members if KICK_ON_EXPIRE=true."""
+    """Background task: periodically send expiry notifications and kick expired members."""
     while True:
         await asyncio.sleep(settings.KICK_CRON_SECONDS)
+        try:
+            await _run_notify_job(settings)
+        except Exception:
+            logger.exception("notify_job_error")
         try:
             await _run_kick_job(settings)
         except Exception:
             logger.exception("kick_job_error")
+
+
+async def _run_notify_job(settings: Settings) -> None:
+    """Send expiry warnings via BotHelp API for subscriptions ending in 3/2/1 days."""
+    from sqlalchemy import select
+
+    from app.core.time import utcnow
+    from app.db.models import User
+    from app.db.repo import EntitlementRepo
+    from app.db.session import AsyncSessionFactory
+    from app.services.bothelp_api import BotHelpClient, BotHelpAPIError
+
+    steps_map = settings.notify_steps_map
+    if not steps_map or not settings.BOTHELP_CLIENT_ID:
+        return  # notifications not configured
+
+    bothelp = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
+    now = utcnow()
+    total_sent = 0
+
+    async with AsyncSessionFactory() as db:
+        ent_repo = EntitlementRepo(db)
+
+        # Process thresholds from largest to smallest (3, 2, 1).
+        for days in sorted(steps_map.keys(), reverse=True):
+            step_referral = steps_map[days]
+            expiring = await ent_repo.get_expiring_soon(now, days)
+
+            for ent in expiring:
+                result = await db.execute(select(User).where(User.id == ent.user_id))
+                user: User | None = result.scalar_one_or_none()
+                if not user:
+                    continue
+                try:
+                    await bothelp.trigger_bot_step(
+                        telegram_user_id=user.telegram_user_id,
+                        bot_referral=settings.BOTHELP_BOT_REFERRAL,
+                        step_referral=step_referral,
+                    )
+                    ent.expiry_notified_days = days
+                    total_sent += 1
+                except BotHelpAPIError:
+                    logger.warning(
+                        "notify_failed tg_id=%d days=%d",
+                        user.telegram_user_id,
+                        days,
+                    )
+
+        await db.commit()
+
+    if total_sent:
+        logger.info("notify_job_complete sent=%d", total_sent)
 
 
 async def _run_kick_job(settings: Settings) -> None:
