@@ -10,7 +10,7 @@ from app.core.time import utcnow
 from app.db.models import User
 from app.db.repo import EntitlementRepo, UserRepo
 from app.db.session import AsyncSessionFactory
-from app.services.entitlements import CLUB_PRODUCT_KEY, can_approve_join
+from app.services.entitlements import CLUB_PRODUCT_KEY, MENU_PRODUCT_KEY, can_approve_join
 from app.services.telegram_access import TelegramAccessService
 
 logger = logging.getLogger(__name__)
@@ -23,15 +23,19 @@ async def handle_join_request(event: ChatJoinRequest, bot: Bot) -> None:
     Evaluate a channel join request and approve or decline it immediately.
 
     Decision criteria (all must pass):
-      - The request is for the configured TG_CHANNEL_ID.
-      - The user has an active entitlement for product LAVA_PRODUCT_KEY_CLUB.
+      - The request is for a configured product channel (club/menu).
+      - The user has an active entitlement for that product.
       - active_until is None OR now <= active_until.
       - allowed_to_join_until is None OR now <= allowed_to_join_until.
     """
     settings = get_settings()
 
-    # Guard: only process requests for the configured channel.
-    if event.chat.id != settings.TG_CHANNEL_ID:
+    product_by_channel_id = {settings.TG_CHANNEL_ID: CLUB_PRODUCT_KEY}
+    if settings.TG_MENU_CHANNEL_ID:
+        product_by_channel_id[settings.TG_MENU_CHANNEL_ID] = MENU_PRODUCT_KEY
+
+    product_key = product_by_channel_id.get(event.chat.id)
+    if product_key is None:
         logger.info(
             "join_request_ignored chat_id=%d user_id=%d",
             event.chat.id,
@@ -48,26 +52,26 @@ async def handle_join_request(event: ChatJoinRequest, bot: Bot) -> None:
         user: User | None = await user_repo.get_by_telegram_id(telegram_user_id)
         ent = None
         if user:
-            ent = await ent_repo.get_by_user_and_product(user.id, CLUB_PRODUCT_KEY)
+            ent = await ent_repo.get_by_user_and_product(user.id, product_key)
 
     now = utcnow()
     approved, reason = can_approve_join(ent, now=now)
 
-    tg_svc = TelegramAccessService(bot, settings.TG_CHANNEL_ID)
+    tg_svc = TelegramAccessService(bot, event.chat.id)
 
     if approved:
         await tg_svc.approve_join_request(telegram_user_id)
         logger.info(
             "join_approved telegram_id=%d product=%s",
             telegram_user_id,
-            CLUB_PRODUCT_KEY,
+            product_key,
         )
     else:
         await tg_svc.decline_join_request(telegram_user_id)
         logger.warning(
             "join_declined telegram_id=%d product=%s reason=%s",
             telegram_user_id,
-            CLUB_PRODUCT_KEY,
+            product_key,
             reason,
         )
 

@@ -83,12 +83,14 @@ pytest tests/ -v
 | `ACCESS_BOT_WEBHOOK_PATH` | no | `/tg/access/webhook` | Path where Telegram sends updates |
 | `ACCESS_BOT_SECRET_TOKEN` | **yes** | — | Random secret passed to `setWebhook`; validated on every update |
 | `TG_CHANNEL_ID` | **yes** | — | Numeric channel ID, e.g. `-1001234567890` |
+| `TG_MENU_CHANNEL_ID` | no | `0` | Menu channel ID; `0` disables menu flows |
 | `INVITE_TTL_SECONDS` | no | `600` | Invite link lifetime in seconds |
 | `JOIN_WINDOW_SECONDS` | no | `600` | Window after payment during which join requests are approved |
 | `KICK_ON_EXPIRE` | no | `false` | Kick expired members from the channel |
 | `KICK_GRACE_SECONDS` | no | `0` | Extra seconds after `active_until` before kicking |
 | `KICK_CRON_SECONDS` | no | `3600` | How often the kick job runs |
 | `LAVA_WEBHOOK_PATH` | no | `/lava/webhook` | Path where Lava sends webhooks |
+| `LAVA_OFFER_MENU` | no | `` | Lava offer ID for one-time menu product |
 | `LAVA_SECRET` | **yes** | — | HMAC-SHA256 signing secret from Lava dashboard |
 | `LAVA_PRODUCT_KEY_CLUB` | no | `club_monthly` | Internal key for the club subscription |
 | `ADMIN_TOKEN` | **yes** | — | `X-Admin-Token` header value for admin endpoints |
@@ -198,16 +200,31 @@ Called by Lava on payment events. No auth from your side — Lava sends a signat
 
 Returns 402 if the user has no active subscription.
 
+### `POST /invites/menu`
+
+**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
+
+**Body:**
+```json
+{"telegram_user_id": 123456789}
+```
+
+Returns a permanent join-request invite for menu channel (`expires_at: null`).
+
 ### `POST /payments/create`
 
 **Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
 
 **Body:**
 ```json
-{"telegram_user_id": 123456789, "plan": "3m"}
+{"telegram_user_id": 123456789, "product": "club", "plan": "3m"}
 ```
 
-`plan` supports canonical values:
+`product`:
+- `club` (requires `plan`)
+- `menu` (ignores `plan`, creates invoice for menu offer)
+
+For `product=club`, `plan` supports canonical values:
 - `1m`
 - `3m`
 - `6m`
@@ -222,10 +239,14 @@ like `3м` / `6мес`.
 
 **Body:**
 ```json
-{"telegram_user_id": 123456789}
+{"telegram_user_id": 123456789, "product": "menu"}
 ```
 
+`product` defaults to `club` for backward compatibility.
+
 If paid, returns `paid="true"` + invite link; otherwise `paid="false"`.
+- `club` => time-limited invite (`expires_at` is set)
+- `menu` => permanent invite (`expires_at = null`)
 
 ### `GET /admin/ping`
 

@@ -10,8 +10,8 @@ Flow for digital product purchases:
   2. Store event in lava_events for idempotency.
   3. Classify event type.
   4. Identify the Telegram user (via pending_invoices mapping or payload).
-  5. Resolve Lava offer ID → duration in days.
-  6. Extend (stack) the user's club entitlement.
+  5. Resolve Lava offer ID → product + duration policy.
+  6. Activate/extend the corresponding entitlement.
 """
 from __future__ import annotations
 
@@ -26,7 +26,11 @@ from app.core.security import verify_lava_basic_auth
 from app.db.repo import LavaEventRepo, PendingInvoiceRepo
 from app.db.session import get_db
 from app.services import lava as lava_svc
-from app.services.entitlements import CLUB_PRODUCT_KEY, EntitlementService
+from app.services.entitlements import (
+    CLUB_PRODUCT_KEY,
+    MENU_PRODUCT_KEY,
+    EntitlementService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,25 @@ def _extract_contract_id(payload: dict) -> str | None:
     for field in ("contractId", "contract_id", "id"):
         if val := payload.get(field):
             return str(val)
+    return None
+
+
+def _resolve_offer(settings: Settings, offer_id: str | None) -> tuple[str, int | None] | None:
+    """
+    Resolve offer ID to (product_key, duration_days).
+
+    duration_days=None means lifetime entitlement.
+    """
+    if not offer_id:
+        return None
+
+    club_duration = settings.lava_product_map.get(offer_id)
+    if club_duration is not None:
+        return CLUB_PRODUCT_KEY, club_duration
+
+    if settings.LAVA_OFFER_MENU and offer_id == settings.LAVA_OFFER_MENU:
+        return MENU_PRODUCT_KEY, None
+
     return None
 
 
@@ -116,31 +139,34 @@ async def lava_webhook_handler(
 
     # ── 5. Apply business action ─────────────────────────────────────────────
 
+    if offer_id is None:
+        offer_id = lava_svc.extract_offer_id(payload)
+    offer_details = _resolve_offer(settings, offer_id)
+
     if action == "payment_success":
-        # Resolve offer ID → duration in days.
-        if offer_id is None:
-            offer_id = lava_svc.extract_offer_id(payload)
-
-        product_map = settings.lava_product_map
-        duration_days = product_map.get(offer_id) if offer_id else None
-
-        if duration_days is None:
+        if offer_details is None:
             logger.warning(
                 "lava_unknown_offer offer_id=%s event_id=%s known_offers=%s",
                 offer_id,
                 event_id,
-                list(product_map.keys()),
+                list(settings.lava_product_map.keys()) + [settings.LAVA_OFFER_MENU],
             )
             return {"status": "unknown_offer"}
 
-        await ent_service.apply_payment_success(
-            telegram_user_id, duration_days, CLUB_PRODUCT_KEY
-        )
+        product_key, duration_days = offer_details
+        if duration_days is None:
+            await ent_service.apply_lifetime_success(telegram_user_id, product_key)
+        else:
+            await ent_service.apply_payment_success(
+                telegram_user_id, duration_days, product_key
+            )
 
     elif action == "payment_failed":
-        await ent_service.apply_payment_failed(telegram_user_id, CLUB_PRODUCT_KEY)
+        product_key = offer_details[0] if offer_details is not None else CLUB_PRODUCT_KEY
+        await ent_service.apply_payment_failed(telegram_user_id, product_key)
 
     elif action == "canceled":
-        await ent_service.apply_canceled(telegram_user_id, CLUB_PRODUCT_KEY)
+        product_key = offer_details[0] if offer_details is not None else CLUB_PRODUCT_KEY
+        await ent_service.apply_canceled(telegram_user_id, product_key)
 
     return {"status": "ok"}

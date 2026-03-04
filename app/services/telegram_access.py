@@ -18,27 +18,33 @@ class TelegramAccessService:
     async def create_invite_link(
         self,
         telegram_user_id: int,
-        invite_ttl_seconds: int,
-    ) -> tuple[str, int]:
+        invite_ttl_seconds: int | None,
+        link_name_prefix: str = "club",
+    ) -> tuple[str, int | None]:
         """
         Create a join-request invite link for the channel.
 
         Returns
         -------
-        (invite_link_url, expire_unix_timestamp)
+        (invite_link_url, expire_unix_timestamp_or_none)
         """
-        expire_ts = int(time.time()) + invite_ttl_seconds
+        expire_ts = (
+            int(time.time()) + invite_ttl_seconds
+            if invite_ttl_seconds is not None
+            else None
+        )
         # Telegram limits name to 32 chars.
-        name = f"club_{telegram_user_id}_{expire_ts}"[:32]
+        suffix = expire_ts if expire_ts is not None else int(time.time())
+        name = f"{link_name_prefix}_{telegram_user_id}_{suffix}"[:32]
 
         link = await self._bot.create_chat_invite_link(
             chat_id=self._channel_id,
-            expire_date=expire_ts,
             creates_join_request=True,
             name=name,
+            **({"expire_date": expire_ts} if expire_ts is not None else {}),
         )
         logger.info(
-            "invite_link_created telegram_id=%d link=%s expires=%d",
+            "invite_link_created telegram_id=%d link=%s expires=%s",
             telegram_user_id,
             link.invite_link,
             expire_ts,

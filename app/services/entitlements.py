@@ -11,10 +11,10 @@ from app.db.repo import EntitlementRepo, UserRepo
 
 logger = logging.getLogger(__name__)
 
-# The single product key for club channel access.
-# All Lava offers (1m/3m/6m/12m) map to the same entitlement — only the
-# duration differs.
+# Product keys used across payments, webhook processing, and join approvals.
+# Club offers (1m/3m/6m/12m) share one entitlement key with varying duration.
 CLUB_PRODUCT_KEY = "club"
+MENU_PRODUCT_KEY = "menu"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +157,46 @@ class EntitlementService:
                 telegram_user_id,
                 product_key,
             )
+        return ent
+
+    async def apply_lifetime_success(
+        self,
+        telegram_user_id: int,
+        product_key: str = MENU_PRODUCT_KEY,
+    ) -> Entitlement:
+        """
+        Activate a lifetime entitlement.
+
+        Lifetime means:
+          - status=active
+          - active_until=NULL (never expires)
+          - allowed_to_join_until=NULL (join approvals always allowed)
+        """
+        user, _ = await self._users.get_or_create(telegram_user_id)
+        existing = await self._entitlements.get_by_user_and_product(user.id, product_key)
+
+        if existing is None:
+            ent = await self._entitlements.upsert(
+                user_id=user.id,
+                product_key=product_key,
+                status=EntitlementStatus.active,
+                active_until=None,
+                allowed_to_join_until=None,
+            )
+        else:
+            existing.status = EntitlementStatus.active
+            existing.active_until = None
+            existing.allowed_to_join_until = None
+            existing.expiry_notified_days = None
+            existing.updated_at = utcnow()
+            await self._db.flush()
+            ent = existing
+
+        logger.info(
+            "entitlement_lifetime_activated telegram_id=%d product=%s",
+            telegram_user_id,
+            product_key,
+        )
         return ent
 
     async def apply_payment_failed(

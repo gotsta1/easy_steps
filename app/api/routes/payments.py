@@ -1,8 +1,8 @@
 """
 Payment endpoints called by BotHelp.
 
-POST /payments/create  — generate a Lava payment link for a user + plan
-POST /payments/check   — check if user paid, return invite link if yes
+POST /payments/create  — generate a Lava payment link for a user + product
+POST /payments/check   — check if user paid for product, return invite link
 """
 from __future__ import annotations
 
@@ -17,7 +17,11 @@ from app.api.deps import get_bot, get_entitlement_service, require_admin_token
 from app.core.config import Settings, get_settings
 from app.db.repo import PendingInvoiceRepo
 from app.db.session import get_db
-from app.services.entitlements import CLUB_PRODUCT_KEY, EntitlementService
+from app.services.entitlements import (
+    CLUB_PRODUCT_KEY,
+    MENU_PRODUCT_KEY,
+    EntitlementService,
+)
 from app.services.lava_api import LavaAPIError, create_invoice
 from app.services.telegram_access import TelegramAccessService
 
@@ -71,12 +75,22 @@ def normalize_plan(raw_plan: str) -> str:
     return normalized
 
 
+def normalize_product(raw_product: str | None) -> str:
+    token = str(raw_product or CLUB_PRODUCT_KEY).strip().lower()
+    if token not in (CLUB_PRODUCT_KEY, MENU_PRODUCT_KEY):
+        raise ValueError(
+            f"Unknown product: {raw_product}. Valid: {[CLUB_PRODUCT_KEY, MENU_PRODUCT_KEY]}"
+        )
+    return token
+
+
 # ── Create payment ───────────────────────────────────────────────────────────
 
 
 class CreatePaymentRequest(BaseModel):
     telegram_user_id: int
-    plan: str  # "1m", "3m", "6m", "12m"
+    plan: str | None = None  # club: "1m"/"3m"/"6m"/"12m"; menu: optional
+    product: str = CLUB_PRODUCT_KEY  # "club" | "menu"
 
     @field_validator("telegram_user_id", mode="before")
     @classmethod
@@ -101,26 +115,57 @@ async def create_payment(
     """
     Generate a Lava.top payment link.
 
-    BotHelp calls this when the user taps a plan button.
+    BotHelp calls this when the user taps a product/plan button.
     Returns a payment_url that BotHelp sends to the user.
     """
     try:
-        plan = normalize_plan(body.plan)
+        product = normalize_product(body.product)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
 
-    logger.info("create_payment_request telegram_id=%s plan=%s", body.telegram_user_id, plan)
-    # Resolve plan → offer_id
-    config_attr = _PLAN_TO_CONFIG_ATTR[plan]
-    offer_id = getattr(settings, config_attr)
-    if not offer_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Plan {plan} is not configured (empty offer ID).",
-        )
+    plan: str
+    offer_id: str
+
+    if product == CLUB_PRODUCT_KEY:
+        if body.plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Parameter 'plan' is required for product 'club'.",
+            )
+        try:
+            plan = normalize_plan(body.plan)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        # Resolve plan → offer_id
+        config_attr = _PLAN_TO_CONFIG_ATTR[plan]
+        offer_id = getattr(settings, config_attr)
+        if not offer_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Plan {plan} is not configured (empty offer ID).",
+            )
+    else:
+        plan = MENU_PRODUCT_KEY
+        offer_id = settings.LAVA_OFFER_MENU
+        if not offer_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Product 'menu' is not configured (empty offer ID).",
+            )
+
+    logger.info(
+        "create_payment_request telegram_id=%s product=%s plan=%s",
+        body.telegram_user_id,
+        product,
+        plan,
+    )
 
     # Generate a deterministic email for this user (Lava requires an email).
     email = f"tg_{body.telegram_user_id}@{settings.LAVA_BUYER_EMAIL_DOMAIN}"
@@ -149,8 +194,9 @@ async def create_payment(
     )
 
     logger.info(
-        "payment_created telegram_id=%d plan=%s invoice=%s",
+        "payment_created telegram_id=%d product=%s plan=%s invoice=%s",
         body.telegram_user_id,
+        product,
         plan,
         result.invoice_id,
     )
@@ -172,6 +218,7 @@ async def create_payment(
 
 class CheckPaymentRequest(BaseModel):
     telegram_user_id: int
+    product: str = CLUB_PRODUCT_KEY  # "club" | "menu"
 
     @field_validator("telegram_user_id", mode="before")
     @classmethod
@@ -201,29 +248,55 @@ async def check_payment(
     If yes, generate an invite link to the channel.
     BotHelp calls this when the user taps "Готово".
     """
-    ent = await ent_service.get_for_telegram_user(
-        body.telegram_user_id, CLUB_PRODUCT_KEY
-    )
+    try:
+        product = normalize_product(body.product)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    ent = await ent_service.get_for_telegram_user(body.telegram_user_id, product)
 
     if ent is None or ent.status.value != "active":
         return CheckPaymentResponse(paid="false")
 
-    # Generate invite link
-    tg_svc = TelegramAccessService(bot, settings.TG_CHANNEL_ID)
-    invite_link, expire_ts = await tg_svc.create_invite_link(
-        body.telegram_user_id, settings.INVITE_TTL_SECONDS
-    )
-
-    # Open join window so the access bot approves the request
-    await ent_service.open_join_window(body.telegram_user_id, CLUB_PRODUCT_KEY)
+    if product == CLUB_PRODUCT_KEY:
+        # Generate time-limited invite for subscription flow.
+        tg_svc = TelegramAccessService(bot, settings.TG_CHANNEL_ID)
+        invite_link, expire_ts = await tg_svc.create_invite_link(
+            body.telegram_user_id,
+            settings.INVITE_TTL_SECONDS,
+            link_name_prefix=CLUB_PRODUCT_KEY,
+        )
+        # Open join window so the access bot approves the request.
+        await ent_service.open_join_window(body.telegram_user_id, CLUB_PRODUCT_KEY)
+    else:
+        if not settings.TG_MENU_CHANNEL_ID:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Menu channel is not configured (TG_MENU_CHANNEL_ID is empty).",
+            )
+        # Menu product uses permanent invites (no expire date).
+        tg_svc = TelegramAccessService(bot, settings.TG_MENU_CHANNEL_ID)
+        invite_link, expire_ts = await tg_svc.create_invite_link(
+            body.telegram_user_id,
+            invite_ttl_seconds=None,
+            link_name_prefix=MENU_PRODUCT_KEY,
+        )
 
     from datetime import datetime, timezone
 
-    expires_at = datetime.fromtimestamp(expire_ts, tz=timezone.utc).isoformat()
+    expires_at = (
+        datetime.fromtimestamp(expire_ts, tz=timezone.utc).isoformat()
+        if expire_ts is not None
+        else None
+    )
 
     logger.info(
-        "payment_check_ok telegram_id=%d invite_link=%s",
+        "payment_check_ok telegram_id=%d product=%s invite_link=%s",
         body.telegram_user_id,
+        product,
         invite_link[:40],
     )
     return CheckPaymentResponse(

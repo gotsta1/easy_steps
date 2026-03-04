@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     # ── Telegram channel ─────────────────────────────────────────────────────
     TG_CHANNEL_ID: int  # numeric, e.g. -1001234567890
+    TG_MENU_CHANNEL_ID: int = 0  # menu channel ID; 0 disables menu flows
 
     # ── Invite / join window ─────────────────────────────────────────────────
     INVITE_TTL_SECONDS: int = 600
@@ -72,6 +73,7 @@ class Settings(BaseSettings):
     LAVA_OFFER_CLUB_3M: str = ""   # 3-month club product
     LAVA_OFFER_CLUB_6M: str = ""   # 6-month club product
     LAVA_OFFER_CLUB_12M: str = ""  # 12-month club product
+    LAVA_OFFER_MENU: str = ""      # one-time menu product (lifetime access)
 
     @property
     def lava_product_map(self) -> dict[str, int]:

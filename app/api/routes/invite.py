@@ -9,7 +9,11 @@ from pydantic import BaseModel
 
 from app.api.deps import get_bot, get_entitlement_service, require_admin_token
 from app.core.config import Settings, get_settings
-from app.services.entitlements import CLUB_PRODUCT_KEY, EntitlementService
+from app.services.entitlements import (
+    CLUB_PRODUCT_KEY,
+    MENU_PRODUCT_KEY,
+    EntitlementService,
+)
 from app.services.telegram_access import TelegramAccessService
 
 logger = logging.getLogger(__name__)
@@ -26,7 +30,7 @@ class InviteRequest(BaseModel):
 
 class InviteResponse(BaseModel):
     invite_link: str
-    expires_at: str  # ISO-8601 UTC
+    expires_at: str | None  # ISO-8601 UTC or null for permanent links
 
 
 @router.post("/invites/club", response_model=InviteResponse)
@@ -63,3 +67,37 @@ async def create_club_invite(
 
     expires_at = datetime.fromtimestamp(expire_ts, tz=timezone.utc).isoformat()
     return InviteResponse(invite_link=invite_link, expires_at=expires_at)
+
+
+@router.post("/invites/menu", response_model=InviteResponse)
+async def create_menu_invite(
+    body: InviteRequest,
+    settings: Settings = Depends(get_settings),
+    ent_service: EntitlementService = Depends(get_entitlement_service),
+    bot: Bot = Depends(get_bot),
+) -> InviteResponse:
+    """
+    Generate a permanent join-request invite link for the menu channel.
+
+    Requires an active 'menu' entitlement.
+    """
+    if not settings.TG_MENU_CHANNEL_ID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Menu channel is not configured (TG_MENU_CHANNEL_ID is empty).",
+        )
+
+    ent = await ent_service.get_for_telegram_user(body.telegram_user_id, MENU_PRODUCT_KEY)
+    if ent is None or ent.status.value != "active":
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"No active menu access. Current status: {ent.status.value if ent else 'none'}.",
+        )
+
+    tg_svc = TelegramAccessService(bot, settings.TG_MENU_CHANNEL_ID)
+    invite_link, _ = await tg_svc.create_invite_link(
+        body.telegram_user_id,
+        invite_ttl_seconds=None,
+        link_name_prefix=MENU_PRODUCT_KEY,
+    )
+    return InviteResponse(invite_link=invite_link, expires_at=None)
