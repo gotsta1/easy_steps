@@ -49,6 +49,8 @@ class CreatePaymentRequest(BaseModel):
     @field_validator("telegram_user_id", mode="before")
     @classmethod
     def coerce_telegram_id(cls, v):  # noqa: N805
+        if isinstance(v, str) and not v.isdigit():
+            raise ValueError(f"telegram_user_id must be a number, got '{v}'")
         return int(v)
 
 
@@ -59,6 +61,7 @@ class CreatePaymentResponse(BaseModel):
 
 @router.post("/create", response_model=CreatePaymentResponse)
 async def create_payment(
+    request: Request,
     body: CreatePaymentRequest,
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
@@ -69,6 +72,7 @@ async def create_payment(
     BotHelp calls this when the user taps a plan button.
     Returns a payment_url that BotHelp sends to the user.
     """
+    logger.info("create_payment_request telegram_id=%s plan=%s", body.telegram_user_id, body.plan)
     # Resolve plan → offer_id
     config_attr = _PLAN_TO_CONFIG_ATTR.get(body.plan)
     if not config_attr:
@@ -131,6 +135,8 @@ class CheckPaymentRequest(BaseModel):
     @field_validator("telegram_user_id", mode="before")
     @classmethod
     def coerce_telegram_id(cls, v):  # noqa: N805
+        if isinstance(v, str) and not v.isdigit():
+            raise ValueError(f"telegram_user_id must be a number, got '{v}'")
         return int(v)
 
 

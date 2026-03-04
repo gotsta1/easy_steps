@@ -95,6 +95,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def log_requests(request, call_next):
+        if request.url.path.startswith("/payments"):
+            body = await request.body()
+            logger.info(
+                "incoming_request path=%s body=%s",
+                request.url.path,
+                body[:500],
+            )
+        response = await call_next(request)
+        return response
+
     # ── Static routers ────────────────────────────────────────────────────────
     from app.api.routes.health import router as health_router
     from app.api.routes.invite import router as invite_router
