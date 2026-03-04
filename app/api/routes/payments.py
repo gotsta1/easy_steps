@@ -148,7 +148,7 @@ class CheckPaymentRequest(BaseModel):
 
 
 class CheckPaymentResponse(BaseModel):
-    paid: bool
+    paid: str  # "true" / "false" as string for BotHelp compatibility
     invite_link: str | None = None
     expires_at: str | None = None
 
@@ -172,7 +172,7 @@ async def check_payment(
     )
 
     if ent is None or ent.status.value != "active":
-        return CheckPaymentResponse(paid=False)
+        return CheckPaymentResponse(paid="false")
 
     # Generate invite link
     tg_svc = TelegramAccessService(bot, settings.TG_CHANNEL_ID)
@@ -193,7 +193,7 @@ async def check_payment(
         invite_link[:40],
     )
     return CheckPaymentResponse(
-        paid=True,
+        paid="true",
         invite_link=invite_link,
         expires_at=expires_at,
     )
