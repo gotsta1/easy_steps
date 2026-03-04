@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
-from app.db.models import Entitlement, EntitlementStatus, LavaEvent, User
+from app.db.models import Entitlement, EntitlementStatus, LavaEvent, PendingInvoice, User
 
 logger = logging.getLogger(__name__)
 
@@ -144,3 +144,51 @@ class LavaEventRepo:
         self._db.add(evt)
         await self._db.flush()
         return evt
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pending invoice repository
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PendingInvoiceRepo:
+    def __init__(self, session: AsyncSession) -> None:
+        self._db = session
+
+    async def create(
+        self,
+        lava_invoice_id: str,
+        telegram_user_id: int,
+        offer_id: str,
+        plan: str,
+        payment_url: str,
+    ) -> PendingInvoice:
+        inv = PendingInvoice(
+            lava_invoice_id=lava_invoice_id,
+            telegram_user_id=telegram_user_id,
+            offer_id=offer_id,
+            plan=plan,
+            payment_url=payment_url,
+        )
+        self._db.add(inv)
+        await self._db.flush()
+        return inv
+
+    async def get_by_lava_id(self, lava_invoice_id: str) -> PendingInvoice | None:
+        result = await self._db.execute(
+            select(PendingInvoice).where(
+                PendingInvoice.lava_invoice_id == lava_invoice_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_contract_id(self, contract_id: str) -> PendingInvoice | None:
+        """Alias — Lava uses 'contractId' in webhooks, same as invoice ID."""
+        return await self.get_by_lava_id(contract_id)
+
+    async def mark_paid(self, lava_invoice_id: str) -> PendingInvoice | None:
+        inv = await self.get_by_lava_id(lava_invoice_id)
+        if inv:
+            inv.paid = True
+            await self._db.flush()
+        return inv

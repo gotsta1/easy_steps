@@ -91,6 +91,33 @@ class Entitlement(Base):
         )
 
 
+class PendingInvoice(Base):
+    """Maps a Lava invoice ID to the Telegram user who initiated payment."""
+
+    __tablename__ = "pending_invoices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lava_invoice_id: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, index=True
+    )
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    offer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    plan: Mapped[str] = mapped_column(Text, nullable=False)  # "1m", "3m", "6m", "12m"
+    payment_url: Mapped[str] = mapped_column(Text, nullable=False)
+    paid: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PendingInvoice id={self.id} lava={self.lava_invoice_id}"
+            f" tg={self.telegram_user_id} plan={self.plan} paid={self.paid}>"
+        )
+
+
 class LavaEvent(Base):
     """Idempotency log for incoming Lava webhook events."""
 

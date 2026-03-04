@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # You set these in the Lava dashboard when creating the webhook.
     LAVA_WEBHOOK_LOGIN: str
     LAVA_WEBHOOK_PASSWORD: str
+    # API key from Lava developer portal — used to create invoices.
+    LAVA_API_KEY: str
+    # Domain for generated buyer emails (Lava requires an email field).
+    LAVA_BUYER_EMAIL_DOMAIN: str = "easysteps.app"
 
     # Lava offer IDs → mapped to club access durations.
     # Each env var holds the offer/product ID from your Lava dashboard.

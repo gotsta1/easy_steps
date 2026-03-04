@@ -99,10 +99,12 @@ def create_app() -> FastAPI:
     from app.api.routes.health import router as health_router
     from app.api.routes.invite import router as invite_router
     from app.api.routes.admin import router as admin_router
+    from app.api.routes.payments import router as payments_router
 
     app.include_router(health_router)
     app.include_router(invite_router)
     app.include_router(admin_router)
+    app.include_router(payments_router)
 
     # ── Dynamic-path routes ───────────────────────────────────────────────────
     # These paths come from env vars and MUST match what is registered with
