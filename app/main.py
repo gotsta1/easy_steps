@@ -142,6 +142,16 @@ def create_app() -> FastAPI:
         summary="Telegram Access Bot webhook",
     )
 
+    from app.api.routes.bothelp_webhook import bothelp_webhook_handler
+
+    app.add_api_route(
+        settings.BOTHELP_WEBHOOK_PATH,
+        bothelp_webhook_handler,
+        methods=["POST"],
+        tags=["bothelp"],
+        summary="BotHelp subscriber mapping webhook",
+    )
+
     return app
 
 
@@ -206,11 +216,11 @@ async def _run_notify_job(settings: Settings) -> None:
             for ent in expiring:
                 result = await db.execute(select(User).where(User.id == ent.user_id))
                 user: User | None = result.scalar_one_or_none()
-                if not user:
+                if not user or not user.bothelp_subscriber_id:
                     continue
                 try:
                     await bothelp.trigger_bot_step(
-                        telegram_user_id=user.telegram_user_id,
+                        bothelp_subscriber_id=user.bothelp_subscriber_id,
                         bot_referral=settings.BOTHELP_BOT_REFERRAL,
                         step_referral=step_referral,
                     )
@@ -218,8 +228,9 @@ async def _run_notify_job(settings: Settings) -> None:
                     total_sent += 1
                 except BotHelpAPIError:
                     logger.warning(
-                        "notify_failed tg_id=%d days=%d",
+                        "notify_failed tg_id=%d bothelp_id=%d days=%d",
                         user.telegram_user_id,
+                        user.bothelp_subscriber_id,
                         days,
                     )
 

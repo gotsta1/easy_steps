@@ -33,6 +33,9 @@ class User(Base):
     telegram_user_id: Mapped[int] = mapped_column(
         BigInteger, unique=True, nullable=False, index=True
     )
+    bothelp_subscriber_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=sa.text("now()"),

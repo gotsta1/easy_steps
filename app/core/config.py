@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     BOTHELP_STEP_NOTIFY_3D: str = ""         # step referral: "осталось 3 дня"
     BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
     BOTHELP_STEP_NOTIFY_1D: str = ""         # step referral: "остался 1 день"
+    BOTHELP_WEBHOOK_PATH: str = "/bothelp/webhook"
 
     # ── Lava.top ─────────────────────────────────────────────────────────────
     LAVA_WEBHOOK_PATH: str = "/lava/webhook"

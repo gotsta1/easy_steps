@@ -3,6 +3,9 @@ BotHelp API client — OAuth2 token management + bot step triggering.
 
 Used to send expiry notification messages to users in the BotHelp chat
 by triggering pre-configured bot steps.
+
+Uses v1 endpoint: POST /v1/subscribers/{subscriber_id}/bot
+(v2 /subscribers/messenger/ is Facebook-only)
 """
 from __future__ import annotations
 
@@ -64,13 +67,13 @@ class BotHelpClient:
 
     async def trigger_bot_step(
         self,
-        telegram_user_id: int,
+        bothelp_subscriber_id: int,
         bot_referral: str,
         step_referral: str,
     ) -> None:
-        """Start a bot at a specific step for a user identified by Telegram ID."""
+        """Start a bot at a specific step for a BotHelp subscriber."""
         token = await self._ensure_token()
-        url = f"{BOTHELP_API_BASE}/v2/subscribers/messenger/{telegram_user_id}/bot"
+        url = f"{BOTHELP_API_BASE}/v1/subscribers/{bothelp_subscriber_id}/bot"
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
@@ -81,8 +84,8 @@ class BotHelpClient:
 
         if resp.status_code not in (200, 201, 204):
             logger.error(
-                "bothelp_trigger_step_failed tg_id=%d step=%s status=%d body=%s",
-                telegram_user_id,
+                "bothelp_trigger_step_failed sub_id=%d step=%s status=%d body=%s",
+                bothelp_subscriber_id,
                 step_referral,
                 resp.status_code,
                 resp.text[:300],
@@ -90,7 +93,7 @@ class BotHelpClient:
             raise BotHelpAPIError(resp.status_code, resp.text[:300])
 
         logger.info(
-            "bothelp_step_triggered tg_id=%d step=%s",
-            telegram_user_id,
+            "bothelp_step_triggered sub_id=%d step=%s",
+            bothelp_subscriber_id,
             step_referral,
         )
