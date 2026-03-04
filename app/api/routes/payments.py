@@ -56,6 +56,7 @@ class CreatePaymentRequest(BaseModel):
 
 class CreatePaymentResponse(BaseModel):
     payment_url: str
+    payment_url_path: str
     invoice_id: str
 
 
@@ -119,8 +120,15 @@ async def create_payment(
         body.plan,
         result.invoice_id,
     )
+    from urllib.parse import urlparse
+
+    parsed = urlparse(result.payment_url)
+    path_and_query = parsed.path.lstrip("/")
+    if parsed.query:
+        path_and_query += "?" + parsed.query
     return CreatePaymentResponse(
         payment_url=result.payment_url,
+        payment_url_path=path_and_query,
         invoice_id=result.invoice_id,
     )
 
