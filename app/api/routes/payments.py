@@ -38,6 +38,38 @@ _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
     "12m": "LAVA_OFFER_CLUB_12M",
 }
 
+_PLAN_ALIASES: dict[str, str] = {
+    # canonical
+    "1m": "1m",
+    "3m": "3m",
+    "6m": "6m",
+    "12m": "12m",
+    # numeric
+    "1": "1m",
+    "3": "3m",
+    "6": "6m",
+    "12": "12m",
+    # cyrillic variants often used in BotHelp button payloads
+    "1м": "1m",
+    "3м": "3m",
+    "6м": "6m",
+    "12м": "12m",
+    "1мес": "1m",
+    "3мес": "3m",
+    "6мес": "6m",
+    "12мес": "12m",
+}
+
+
+def normalize_plan(raw_plan: str) -> str:
+    token = str(raw_plan).strip().lower().replace(" ", "")
+    normalized = _PLAN_ALIASES.get(token)
+    if normalized is None:
+        raise ValueError(
+            f"Unknown plan: {raw_plan}. Valid canonical values: {list(_PLAN_TO_CONFIG_ATTR.keys())}"
+        )
+    return normalized
+
 
 # ── Create payment ───────────────────────────────────────────────────────────
 
@@ -72,20 +104,22 @@ async def create_payment(
     BotHelp calls this when the user taps a plan button.
     Returns a payment_url that BotHelp sends to the user.
     """
-    logger.info("create_payment_request telegram_id=%s plan=%s", body.telegram_user_id, body.plan)
-    # Resolve plan → offer_id
-    config_attr = _PLAN_TO_CONFIG_ATTR.get(body.plan)
-    if not config_attr:
+    try:
+        plan = normalize_plan(body.plan)
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown plan: {body.plan}. Valid: {list(_PLAN_TO_CONFIG_ATTR.keys())}",
-        )
+            detail=str(exc),
+        ) from exc
 
+    logger.info("create_payment_request telegram_id=%s plan=%s", body.telegram_user_id, plan)
+    # Resolve plan → offer_id
+    config_attr = _PLAN_TO_CONFIG_ATTR[plan]
     offer_id = getattr(settings, config_attr)
     if not offer_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Plan {body.plan} is not configured (empty offer ID).",
+            detail=f"Plan {plan} is not configured (empty offer ID).",
         )
 
     # Generate a deterministic email for this user (Lava requires an email).
@@ -110,14 +144,14 @@ async def create_payment(
         lava_invoice_id=result.invoice_id,
         telegram_user_id=body.telegram_user_id,
         offer_id=offer_id,
-        plan=body.plan,
+        plan=plan,
         payment_url=result.payment_url,
     )
 
     logger.info(
         "payment_created telegram_id=%d plan=%s invoice=%s",
         body.telegram_user_id,
-        body.plan,
+        plan,
         result.invoice_id,
     )
     from urllib.parse import urlparse

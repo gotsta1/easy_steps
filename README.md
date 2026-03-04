@@ -10,7 +10,8 @@ Lava.top payments → Postgres entitlements → Access Bot approves/declines cha
 ```
 Lava.top  ──POST /lava/webhook──►  FastAPI  ──► EntitlementService ──► Postgres
                                                                           │
-BotHelp   ──POST /invites/club──►  FastAPI  ──► TG Bot API (invite link) │
+BotHelp   ──POST /payments/create──► FastAPI ──► Lava invoice             │
+          ──POST /payments/check ──► FastAPI ──► TG Bot API (invite link) │
                                                                           │
 Telegram  ──POST /tg/access/webhook──► aiogram dispatcher                │
                                          └─► can_approve_join() ◄────────┘
@@ -196,6 +197,35 @@ Called by Lava on payment events. No auth from your side — Lava sends a signat
 ```
 
 Returns 402 if the user has no active subscription.
+
+### `POST /payments/create`
+
+**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
+
+**Body:**
+```json
+{"telegram_user_id": 123456789, "plan": "3m"}
+```
+
+`plan` supports canonical values:
+- `1m`
+- `3m`
+- `6m`
+- `12m`
+
+Also accepted for BotHelp convenience: `1`, `3`, `6`, `12`, plus Cyrillic variants
+like `3м` / `6мес`.
+
+### `POST /payments/check`
+
+**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
+
+**Body:**
+```json
+{"telegram_user_id": 123456789}
+```
+
+If paid, returns `paid="true"` + invite link; otherwise `paid="false"`.
 
 ### `GET /admin/ping`
 
