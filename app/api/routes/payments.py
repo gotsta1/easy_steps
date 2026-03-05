@@ -40,6 +40,7 @@ _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
     "6m": "LAVA_OFFER_CLUB_6M",
     "12m": "LAVA_OFFER_CLUB_12M",
 }
+TRIAL_PLAN = "1w"
 
 _PLAN_ALIASES: dict[str, str] = {
     # canonical
@@ -91,7 +92,7 @@ def normalize_product(raw_product: str | None) -> str:
 
 class CreatePaymentRequest(BaseModel):
     telegram_user_id: int
-    plan: str | None = None  # club: "1m"/"3m"/"6m"/"12m"; menu: optional
+    plan: str | None = None  # club: "1w"/"1m"/"3m"/"6m"/"12m"; menu: optional
     product: str = CLUB_PRODUCT_KEY  # "club" | "menu"
 
     @field_validator("telegram_user_id", mode="before")
@@ -169,6 +170,14 @@ async def create_payment(
         plan,
     )
 
+    repo = PendingInvoiceRepo(db)
+    if product == CLUB_PRODUCT_KEY and plan == TRIAL_PLAN:
+        if await repo.has_paid_plan(body.telegram_user_id, TRIAL_PLAN):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Trial plan '1w' can be purchased only once.",
+            )
+
     # Generate a deterministic email for this user (Lava requires an email).
     email = f"tg_{body.telegram_user_id}@{settings.LAVA_BUYER_EMAIL_DOMAIN}"
 
@@ -186,7 +195,6 @@ async def create_payment(
         ) from exc
 
     # Store mapping so the webhook can resolve telegram_user_id.
-    repo = PendingInvoiceRepo(db)
     await repo.create(
         lava_invoice_id=result.invoice_id,
         telegram_user_id=body.telegram_user_id,

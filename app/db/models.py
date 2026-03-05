@@ -70,6 +70,10 @@ class Entitlement(Base):
     active_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Original plan duration in days (7, 30, 90, etc.). NULL = lifetime.
+    duration_days: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
     # Tracks the last expiry notification sent (3, 2, or 1 days before).
     # NULL = no notification sent yet. Reset to NULL on subscription renewal.
     expiry_notified_days: Mapped[int | None] = mapped_column(
@@ -106,7 +110,7 @@ class PendingInvoice(Base):
     )
     telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     offer_id: Mapped[str] = mapped_column(Text, nullable=False)
-    plan: Mapped[str] = mapped_column(Text, nullable=False)  # "1m", "3m", "6m", "12m"
+    plan: Mapped[str] = mapped_column(Text, nullable=False)  # "1w", "1m", "3m", "6m", "12m"
     payment_url: Mapped[str] = mapped_column(Text, nullable=False)
     paid: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

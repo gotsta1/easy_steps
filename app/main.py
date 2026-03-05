@@ -212,6 +212,8 @@ async def _run_notify_job(settings: Settings) -> None:
             expiring = await ent_repo.get_expiring_soon(now, days)
 
             for ent in expiring:
+                if not _should_send_expiry_notification(ent.duration_days, days):
+                    continue
                 result = await db.execute(select(User).where(User.id == ent.user_id))
                 user: User | None = result.scalar_one_or_none()
                 if not user or not user.bothelp_subscriber_id:
@@ -236,6 +238,20 @@ async def _run_notify_job(settings: Settings) -> None:
 
     if total_sent:
         logger.info("notify_job_complete sent=%d", total_sent)
+
+
+def _should_send_expiry_notification(duration_days: int | None, days_before: int) -> bool:
+    """
+    Notification policy by original plan duration:
+      - 7 days plan: notify only 1 day before expiry.
+      - 30/90/180/365 days plans: notify 3/2/1 days before expiry.
+      - Unknown/legacy NULL duration: fallback to 3/2/1 to avoid silent misses.
+    """
+    if duration_days == 7:
+        return days_before == 1
+    if duration_days in {30, 90, 180, 365}:
+        return days_before in {1, 2, 3}
+    return days_before in {1, 2, 3}
 
 
 async def _run_kick_job(settings: Settings) -> None:

@@ -79,6 +79,7 @@ class EntitlementRepo:
         product_key: str,
         status: EntitlementStatus,
         active_until: datetime | None = None,
+        duration_days: int | None = None,
     ) -> Entitlement:
         """Insert or update entitlement; flushes but does not commit."""
         ent = await self.get_by_user_and_product(user_id, product_key)
@@ -89,6 +90,7 @@ class EntitlementRepo:
                 product_key=product_key,
                 status=status,
                 active_until=active_until,
+                duration_days=duration_days,
                 updated_at=now,
             )
             self._db.add(ent)
@@ -99,6 +101,8 @@ class EntitlementRepo:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal
                 ent.active_until = active_until
+            if duration_days is not None:
+                ent.duration_days = duration_days
         await self._db.flush()
         return ent
 
@@ -215,3 +219,18 @@ class PendingInvoiceRepo:
             inv.paid = True
             await self._db.flush()
         return inv
+
+    async def has_paid_plan(
+        self,
+        telegram_user_id: int,
+        plan: str,
+    ) -> bool:
+        """Return True if user already has at least one paid invoice for plan."""
+        result = await self._db.execute(
+            select(PendingInvoice.id).where(
+                PendingInvoice.telegram_user_id == telegram_user_id,
+                PendingInvoice.plan == plan,
+                PendingInvoice.paid.is_(True),
+            )
+        )
+        return result.scalar_one_or_none() is not None

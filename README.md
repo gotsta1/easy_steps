@@ -223,13 +223,16 @@ Returns a permanent join-request invite for menu channel (`expires_at: null`).
 - `menu` (ignores `plan`, creates invoice for menu offer)
 
 For `product=club`, `plan` supports canonical values:
+- `1w`
 - `1m`
 - `3m`
 - `6m`
 - `12m`
 
-Also accepted for BotHelp convenience: `1`, `3`, `6`, `12`, plus Cyrillic variants
-like `3м` / `6мес`.
+`1w` is a trial plan and can be purchased only once per user.
+
+Also accepted for BotHelp convenience: `1н`, `1нед`, `1`, `3`, `6`, `12`,
+plus Cyrillic variants like `3м` / `6мес`.
 
 ### `POST /payments/check`
 

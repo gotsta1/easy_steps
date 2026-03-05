@@ -12,7 +12,7 @@ from app.db.repo import EntitlementRepo, UserRepo
 logger = logging.getLogger(__name__)
 
 # Product keys used across payments, webhook processing, and join approvals.
-# Club offers (1m/3m/6m/12m) share one entitlement key with varying duration.
+# Club offers (1w/1m/3m/6m/12m) share one entitlement key with varying duration.
 CLUB_PRODUCT_KEY = "club"
 MENU_PRODUCT_KEY = "menu"
 
@@ -120,6 +120,7 @@ class EntitlementService:
             product_key=product_key,
             status=EntitlementStatus.active,
             active_until=active_until,
+            duration_days=duration_days,
         )
         logger.info(
             "entitlement_activated telegram_id=%d product=%s duration_days=%d "
@@ -160,6 +161,7 @@ class EntitlementService:
         Lifetime means:
           - status=active
           - active_until=NULL (never expires)
+          - duration_days=NULL
         """
         user, _ = await self._users.get_or_create(telegram_user_id)
         existing = await self._entitlements.get_by_user_and_product(user.id, product_key)
@@ -174,6 +176,7 @@ class EntitlementService:
         else:
             existing.status = EntitlementStatus.active
             existing.active_until = None
+            existing.duration_days = None
             existing.expiry_notified_days = None
             existing.updated_at = utcnow()
             await self._db.flush()
@@ -195,4 +198,3 @@ class EntitlementService:
             telegram_user_id,
             product_key,
         )
-

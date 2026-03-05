@@ -8,10 +8,13 @@ from app.api.routes.payments import normalize_plan, normalize_product
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
+        ("1w", "1w"),
         ("1m", "1m"),
         ("3m", "3m"),
         ("6m", "6m"),
         ("12m", "12m"),
+        ("1н", "1w"),
+        ("1нед", "1w"),
         ("1", "1m"),
         ("3", "3m"),
         ("6", "6m"),
