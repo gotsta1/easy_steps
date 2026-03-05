@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     # Lava offer IDs → mapped to club access durations.
     # Each env var holds the offer/product ID from your Lava dashboard.
     # All four grant access to the same channel — only the duration differs.
+    LAVA_OFFER_CLUB_1W: str = ""   # 1-week club product
     LAVA_OFFER_CLUB_1M: str = ""   # 1-month club product
     LAVA_OFFER_CLUB_3M: str = ""   # 3-month club product
     LAVA_OFFER_CLUB_6M: str = ""   # 6-month club product
@@ -81,6 +82,7 @@ class Settings(BaseSettings):
         """
         mapping: dict[str, int] = {}
         for offer_id, days in [
+            (self.LAVA_OFFER_CLUB_1W, 7),
             (self.LAVA_OFFER_CLUB_1M, 30),
             (self.LAVA_OFFER_CLUB_3M, 90),
             (self.LAVA_OFFER_CLUB_6M, 180),

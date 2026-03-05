@@ -34,6 +34,7 @@ router = APIRouter(
 # ── Plan → offer key mapping ─────────────────────────────────────────────────
 
 _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
+    "1w": "LAVA_OFFER_CLUB_1W",
     "1m": "LAVA_OFFER_CLUB_1M",
     "3m": "LAVA_OFFER_CLUB_3M",
     "6m": "LAVA_OFFER_CLUB_6M",
@@ -42,11 +43,14 @@ _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
 
 _PLAN_ALIASES: dict[str, str] = {
     # canonical
+    "1w": "1w",
     "1m": "1m",
     "3m": "3m",
     "6m": "6m",
     "12m": "12m",
-    # numeric
+    # numeric + suffix
+    "1н": "1w",
+    "1нед": "1w",
     "1": "1m",
     "3": "3m",
     "6": "6m",
