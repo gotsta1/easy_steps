@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import logging
 
-from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_entitlement_service, require_admin_token
+from app.api.deps import get_entitlement_service, require_admin_token
 from app.core.config import Settings, get_settings
 from app.db.repo import PendingInvoiceRepo
 from app.db.session import get_db
@@ -23,7 +22,6 @@ from app.services.entitlements import (
     EntitlementService,
 )
 from app.services.lava_api import LavaAPIError, create_invoice
-from app.services.telegram_access import TelegramAccessService
 
 logger = logging.getLogger(__name__)
 
@@ -230,23 +228,19 @@ class CheckPaymentRequest(BaseModel):
 
 class CheckPaymentResponse(BaseModel):
     paid: str  # "true" / "false" as string for BotHelp compatibility
-    invite_link: str | None = None
-    expires_at: str | None = None
 
 
 @router.post("/check", response_model=CheckPaymentResponse)
 async def check_payment(
     body: CheckPaymentRequest,
-    settings: Settings = Depends(get_settings),
-    db: AsyncSession = Depends(get_db),
     ent_service: EntitlementService = Depends(get_entitlement_service),
-    bot: Bot = Depends(get_bot),
 ) -> CheckPaymentResponse:
     """
     Check if the user has an active entitlement (i.e. payment was processed).
 
-    If yes, generate an invite link to the channel.
-    BotHelp calls this when the user taps "Готово".
+    BotHelp calls this when the user taps "Готово". The invite link is
+    embedded directly in the BotHelp message button, not returned here.
+    The access bot approves/declines join requests based on entitlements.
     """
     try:
         product = normalize_product(body.product)
@@ -261,46 +255,12 @@ async def check_payment(
     if ent is None or ent.status.value != "active":
         return CheckPaymentResponse(paid="false")
 
-    if product == CLUB_PRODUCT_KEY:
-        # Generate time-limited invite for subscription flow.
-        tg_svc = TelegramAccessService(bot, settings.TG_CHANNEL_ID)
-        invite_link, expire_ts = await tg_svc.create_invite_link(
-            body.telegram_user_id,
-            settings.INVITE_TTL_SECONDS,
-            link_name_prefix=CLUB_PRODUCT_KEY,
-        )
-        # Open join window so the access bot approves the request.
-        await ent_service.open_join_window(body.telegram_user_id, CLUB_PRODUCT_KEY)
-    else:
-        if not settings.TG_MENU_CHANNEL_ID:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Menu channel is not configured (TG_MENU_CHANNEL_ID is empty).",
-            )
-        # Menu product uses permanent invites (no expire date).
-        tg_svc = TelegramAccessService(bot, settings.TG_MENU_CHANNEL_ID)
-        invite_link, expire_ts = await tg_svc.create_invite_link(
-            body.telegram_user_id,
-            invite_ttl_seconds=None,
-            link_name_prefix=MENU_PRODUCT_KEY,
-        )
-
-    from datetime import datetime, timezone
-
-    expires_at = (
-        datetime.fromtimestamp(expire_ts, tz=timezone.utc).isoformat()
-        if expire_ts is not None
-        else None
-    )
+    # Open join window so the access bot approves the upcoming request.
+    await ent_service.open_join_window(body.telegram_user_id, product)
 
     logger.info(
-        "payment_check_ok telegram_id=%d product=%s invite_link=%s",
+        "payment_check_ok telegram_id=%d product=%s",
         body.telegram_user_id,
         product,
-        invite_link[:40],
     )
-    return CheckPaymentResponse(
-        paid="true",
-        invite_link=invite_link,
-        expires_at=expires_at,
-    )
+    return CheckPaymentResponse(paid="true")
