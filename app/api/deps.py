@@ -4,6 +4,7 @@ from aiogram import Bot
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.services.entitlements import EntitlementService
 
