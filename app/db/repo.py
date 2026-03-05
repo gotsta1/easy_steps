@@ -79,7 +79,6 @@ class EntitlementRepo:
         product_key: str,
         status: EntitlementStatus,
         active_until: datetime | None = None,
-        allowed_to_join_until: datetime | None = None,
     ) -> Entitlement:
         """Insert or update entitlement; flushes but does not commit."""
         ent = await self.get_by_user_and_product(user_id, product_key)
@@ -90,7 +89,6 @@ class EntitlementRepo:
                 product_key=product_key,
                 status=status,
                 active_until=active_until,
-                allowed_to_join_until=allowed_to_join_until,
                 updated_at=now,
             )
             self._db.add(ent)
@@ -101,8 +99,6 @@ class EntitlementRepo:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal
                 ent.active_until = active_until
-            if allowed_to_join_until is not None:
-                ent.allowed_to_join_until = allowed_to_join_until
         await self._db.flush()
         return ent
 

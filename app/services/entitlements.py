@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.time import utcnow, utcnow_plus
+from app.core.time import utcnow
 from app.db.models import Entitlement, EntitlementStatus
 from app.db.repo import EntitlementRepo, UserRepo
 
@@ -59,13 +59,6 @@ def can_approve_join(
         if now > active_until:
             return False, "subscription_expired"
 
-    join_until = entitlement.allowed_to_join_until
-    if join_until is not None:
-        if join_until.tzinfo is None:
-            join_until = join_until.replace(tzinfo=timezone.utc)
-        if now > join_until:
-            return False, "join_window_expired"
-
     return True, "ok"
 
 
@@ -75,9 +68,8 @@ def can_approve_join(
 
 
 class EntitlementService:
-    def __init__(self, db: AsyncSession, join_window_seconds: int) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self._db = db
-        self._join_window_seconds = join_window_seconds
         self._users = UserRepo(db)
         self._entitlements = EntitlementRepo(db)
 
@@ -122,14 +114,12 @@ class EntitlementService:
             base = now
 
         active_until = base + timedelta(days=duration_days)
-        allowed_to_join_until = utcnow_plus(self._join_window_seconds)
 
         ent = await self._entitlements.upsert(
             user_id=user.id,
             product_key=product_key,
             status=EntitlementStatus.active,
             active_until=active_until,
-            allowed_to_join_until=allowed_to_join_until,
         )
         logger.info(
             "entitlement_activated telegram_id=%d product=%s duration_days=%d "
@@ -170,7 +160,6 @@ class EntitlementService:
         Lifetime means:
           - status=active
           - active_until=NULL (never expires)
-          - allowed_to_join_until=NULL (join approvals always allowed)
         """
         user, _ = await self._users.get_or_create(telegram_user_id)
         existing = await self._entitlements.get_by_user_and_product(user.id, product_key)
@@ -181,12 +170,10 @@ class EntitlementService:
                 product_key=product_key,
                 status=EntitlementStatus.active,
                 active_until=None,
-                allowed_to_join_until=None,
             )
         else:
             existing.status = EntitlementStatus.active
             existing.active_until = None
-            existing.allowed_to_join_until = None
             existing.expiry_notified_days = None
             existing.updated_at = utcnow()
             await self._db.flush()
@@ -209,15 +196,3 @@ class EntitlementService:
             product_key,
         )
 
-    async def open_join_window(
-        self, telegram_user_id: int, product_key: str = CLUB_PRODUCT_KEY
-    ) -> Entitlement | None:
-        """Refresh allowed_to_join_until to now + JOIN_WINDOW_SECONDS."""
-        ent = await self._entitlements.get_by_telegram_and_product(
-            telegram_user_id, product_key
-        )
-        if ent:
-            ent.allowed_to_join_until = utcnow_plus(self._join_window_seconds)
-            ent.updated_at = utcnow()
-            await self._db.flush()
-        return ent

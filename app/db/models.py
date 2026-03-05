@@ -70,10 +70,6 @@ class Entitlement(Base):
     active_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Window during which we'll approve a join request. NULL means always open.
-    allowed_to_join_until: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     # Tracks the last expiry notification sent (3, 2, or 1 days before).
     # NULL = no notification sent yet. Reset to NULL on subscription renewal.
     expiry_notified_days: Mapped[int | None] = mapped_column(

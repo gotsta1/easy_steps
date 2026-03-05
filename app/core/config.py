@@ -37,9 +37,6 @@ class Settings(BaseSettings):
     TG_CHANNEL_ID: int  # numeric, e.g. -1001234567890
     TG_MENU_CHANNEL_ID: int = 0  # menu channel ID; 0 disables menu flows
 
-    # ── Join window ───────────────────────────────────────────────────────────
-    JOIN_WINDOW_SECONDS: int = 600  # how long after payment a join request is approved
-
     # ── Kick on expire ───────────────────────────────────────────────────────
     KICK_ON_EXPIRE: bool = False
     KICK_GRACE_SECONDS: int = 0  # extra grace after active_until before kicking

@@ -25,13 +25,11 @@ PAST = NOW - timedelta(hours=1)
 def make_entitlement(
     status: EntitlementStatus = EntitlementStatus.active,
     active_until: datetime | None = None,
-    allowed_to_join_until: datetime | None = None,
 ) -> Entitlement:
     """Construct a bare Entitlement ORM object without touching the DB."""
     return Entitlement(
         status=status,
         active_until=active_until,
-        allowed_to_join_until=allowed_to_join_until,
         product_key="club_monthly",
         user_id=0,
     )
@@ -111,57 +109,6 @@ def test_active_until_exactly_now_is_still_valid():
     approved, reason = can_approve_join(ent, now=NOW)
     assert approved
     assert reason == "ok"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Join window (allowed_to_join_until)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def test_join_window_in_future_is_approved():
-    ent = make_entitlement(
-        status=EntitlementStatus.active,
-        active_until=FUTURE,
-        allowed_to_join_until=FUTURE,
-    )
-    approved, reason = can_approve_join(ent, now=NOW)
-    assert approved
-    assert reason == "ok"
-
-
-def test_join_window_expired_is_declined():
-    ent = make_entitlement(
-        status=EntitlementStatus.active,
-        active_until=FUTURE,
-        allowed_to_join_until=PAST,
-    )
-    approved, reason = can_approve_join(ent, now=NOW)
-    assert not approved
-    assert reason == "join_window_expired"
-
-
-def test_join_window_none_with_future_active_until_is_approved():
-    """No join-window restriction → only subscription validity matters."""
-    ent = make_entitlement(
-        status=EntitlementStatus.active,
-        active_until=FUTURE,
-        allowed_to_join_until=None,
-    )
-    approved, reason = can_approve_join(ent, now=NOW)
-    assert approved
-    assert reason == "ok"
-
-
-def test_join_window_expired_overrides_valid_subscription():
-    """Expired join window blocks even when subscription is valid."""
-    ent = make_entitlement(
-        status=EntitlementStatus.active,
-        active_until=FUTURE,
-        allowed_to_join_until=PAST,
-    )
-    approved, reason = can_approve_join(ent, now=NOW)
-    assert not approved
-    assert reason == "join_window_expired"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

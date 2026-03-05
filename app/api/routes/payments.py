@@ -255,9 +255,6 @@ async def check_payment(
     if ent is None or ent.status.value != "active":
         return CheckPaymentResponse(paid="false")
 
-    # Open join window so the access bot approves the upcoming request.
-    await ent_service.open_join_window(body.telegram_user_id, product)
-
     logger.info(
         "payment_check_ok telegram_id=%d product=%s",
         body.telegram_user_id,

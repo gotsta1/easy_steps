@@ -84,8 +84,6 @@ pytest tests/ -v
 | `ACCESS_BOT_SECRET_TOKEN` | **yes** | — | Random secret passed to `setWebhook`; validated on every update |
 | `TG_CHANNEL_ID` | **yes** | — | Numeric channel ID, e.g. `-1001234567890` |
 | `TG_MENU_CHANNEL_ID` | no | `0` | Menu channel ID; `0` disables menu flows |
-| `INVITE_TTL_SECONDS` | no | `600` | Invite link lifetime in seconds |
-| `JOIN_WINDOW_SECONDS` | no | `600` | Window after payment during which join requests are approved |
 | `KICK_ON_EXPIRE` | no | `false` | Kick expired members from the channel |
 | `KICK_GRACE_SECONDS` | no | `0` | Extra seconds after `active_until` before kicking |
 | `KICK_CRON_SECONDS` | no | `3600` | How often the kick job runs |

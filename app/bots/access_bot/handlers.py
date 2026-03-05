@@ -26,7 +26,6 @@ async def handle_join_request(event: ChatJoinRequest, bot: Bot) -> None:
       - The request is for a configured product channel (club/menu).
       - The user has an active entitlement for that product.
       - active_until is None OR now <= active_until.
-      - allowed_to_join_until is None OR now <= allowed_to_join_until.
     """
     settings = get_settings()
 

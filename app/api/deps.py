@@ -4,7 +4,6 @@ from aiogram import Bot
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.services.entitlements import EntitlementService
 
@@ -20,9 +19,8 @@ def get_bot(request: Request) -> Bot:
 
 async def get_entitlement_service(
     db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
 ) -> EntitlementService:
-    return EntitlementService(db, settings.JOIN_WINDOW_SECONDS)
+    return EntitlementService(db)
 
 
 # ── Auth dependencies ─────────────────────────────────────────────────────────
