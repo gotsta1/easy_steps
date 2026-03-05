@@ -230,6 +230,8 @@ For `product=club`, `plan` supports canonical values:
 - `12m`
 
 `1w` is a trial plan and can be purchased only once per user.
+If trial is already used, endpoint still returns HTTP 200 with:
+`ok=false`, `error_code="trial_already_used"`, and `detail`.
 
 Also accepted for BotHelp convenience: `1н`, `1нед`, `1`, `3`, `6`, `12`,
 plus Cyrillic variants like `3м` / `6мес`.

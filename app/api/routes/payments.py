@@ -104,9 +104,12 @@ class CreatePaymentRequest(BaseModel):
 
 
 class CreatePaymentResponse(BaseModel):
-    payment_url: str
-    payment_url_path: str
-    invoice_id: str
+    ok: bool = True
+    error_code: str | None = None
+    detail: str | None = None
+    payment_url: str | None = None
+    payment_url_path: str | None = None
+    invoice_id: str | None = None
 
 
 @router.post("/create", response_model=CreatePaymentResponse)
@@ -173,8 +176,13 @@ async def create_payment(
     repo = PendingInvoiceRepo(db)
     if product == CLUB_PRODUCT_KEY and plan == TRIAL_PLAN:
         if await repo.has_paid_plan(body.telegram_user_id, TRIAL_PLAN):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            logger.info(
+                "trial_already_used telegram_id=%d",
+                body.telegram_user_id,
+            )
+            return CreatePaymentResponse(
+                ok=False,
+                error_code="trial_already_used",
                 detail="Trial plan '1w' can be purchased only once.",
             )
 
