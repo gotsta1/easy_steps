@@ -231,6 +231,6 @@ class PendingInvoiceRepo:
                 PendingInvoice.telegram_user_id == telegram_user_id,
                 PendingInvoice.plan == plan,
                 PendingInvoice.paid.is_(True),
-            )
+            ).limit(1)
         )
-        return result.scalar_one_or_none() is not None
+        return result.scalar() is not None
