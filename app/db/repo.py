@@ -100,6 +100,7 @@ class EntitlementRepo:
             if active_until is not None:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal
+                    ent.expiry_notified_3h_at = None
                 ent.active_until = active_until
             if duration_days is not None:
                 ent.duration_days = duration_days
@@ -126,6 +127,27 @@ class EntitlementRepo:
                     Entitlement.expiry_notified_days.is_(None),
                     Entitlement.expiry_notified_days > days,
                 ),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_expiring_within_hours(
+        self, now: datetime, hours: int
+    ) -> list[Entitlement]:
+        """
+        Return active entitlements expiring within ``hours`` hours from ``now``
+        that have not yet received the 3-hour notification.
+        """
+        from datetime import timedelta
+
+        deadline = now + timedelta(hours=hours)
+        result = await self._db.execute(
+            select(Entitlement).where(
+                Entitlement.status == EntitlementStatus.active,
+                Entitlement.active_until.isnot(None),
+                Entitlement.active_until > now,
+                Entitlement.active_until <= deadline,
+                Entitlement.expiry_notified_3h_at.is_(None),
             )
         )
         return list(result.scalars().all())

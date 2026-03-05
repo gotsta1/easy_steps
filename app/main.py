@@ -186,7 +186,7 @@ async def _kick_loop(settings: Settings) -> None:
 
 
 async def _run_notify_job(settings: Settings) -> None:
-    """Send expiry warnings via BotHelp API for subscriptions ending in 3/2/1 days."""
+    """Send expiry warnings via BotHelp API for days/hours-before-expiry thresholds."""
     from sqlalchemy import select
 
     from app.core.time import utcnow
@@ -196,7 +196,8 @@ async def _run_notify_job(settings: Settings) -> None:
     from app.services.bothelp_api import BotHelpClient, BotHelpAPIError
 
     steps_map = settings.notify_steps_map
-    if not steps_map or not settings.BOTHELP_CLIENT_ID:
+    hours_map = settings.notify_hours_map
+    if (not steps_map and not hours_map) or not settings.BOTHELP_CLIENT_ID:
         return  # notifications not configured
 
     bothelp = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
@@ -234,6 +235,34 @@ async def _run_notify_job(settings: Settings) -> None:
                         days,
                     )
 
+        # Process hour-based thresholds (currently only 3h, week plan).
+        for hours in sorted(hours_map.keys(), reverse=True):
+            step_referral = hours_map[hours]
+            expiring = await ent_repo.get_expiring_within_hours(now, hours)
+
+            for ent in expiring:
+                if not _should_send_hour_notification(ent.duration_days, hours):
+                    continue
+                result = await db.execute(select(User).where(User.id == ent.user_id))
+                user: User | None = result.scalar_one_or_none()
+                if not user or not user.bothelp_subscriber_id:
+                    continue
+                try:
+                    await bothelp.trigger_bot_step(
+                        bothelp_subscriber_id=user.bothelp_subscriber_id,
+                        bot_referral=settings.BOTHELP_BOT_REFERRAL,
+                        step_referral=step_referral,
+                    )
+                    ent.expiry_notified_3h_at = now
+                    total_sent += 1
+                except BotHelpAPIError:
+                    logger.warning(
+                        "notify_failed tg_id=%d bothelp_id=%d hours=%d",
+                        user.telegram_user_id,
+                        user.bothelp_subscriber_id,
+                        hours,
+                    )
+
         await db.commit()
 
     if total_sent:
@@ -252,6 +281,11 @@ def _should_send_expiry_notification(duration_days: int | None, days_before: int
     if duration_days in {30, 90, 180, 365}:
         return days_before in {1, 2, 3}
     return days_before in {1, 2, 3}
+
+
+def _should_send_hour_notification(duration_days: int | None, hours_before: int) -> bool:
+    """Hour-level notification policy: only week plan gets a 3-hour reminder."""
+    return duration_days == 7 and hours_before == 3
 
 
 async def _run_kick_job(settings: Settings) -> None:
