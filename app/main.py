@@ -237,7 +237,7 @@ async def _run_notify_job(settings: Settings) -> None:
                         days,
                     )
 
-        # Process hour-based thresholds (currently only 3h, week plan).
+        # Process hour-based thresholds (3h reminder for all plans).
         for hours in sorted(hours_map.keys(), reverse=True):
             step_referral = hours_map[hours]
             expiring = await ent_repo.get_expiring_within_hours(now, hours)
@@ -286,8 +286,10 @@ def _should_send_expiry_notification(duration_days: int | None, days_before: int
 
 
 def _should_send_hour_notification(duration_days: int | None, hours_before: int) -> bool:
-    """Hour-level notification policy: only week plan gets a 3-hour reminder."""
-    return duration_days == 7 and hours_before == 3
+    """Hour-level notification policy: all plans get a 3-hour reminder."""
+    if hours_before == 3:
+        return duration_days in {7, 30, 90, 180, 365} or duration_days is None
+    return False
 
 
 async def _run_kick_job(settings: Settings) -> None:
