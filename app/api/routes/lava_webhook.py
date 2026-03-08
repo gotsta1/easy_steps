@@ -117,11 +117,13 @@ async def lava_webhook_handler(
         if pending:
             telegram_user_id = pending.telegram_user_id
             offer_id = pending.offer_id
-            await pending_repo.mark_paid(contract_id)
+            if action == "payment_success":
+                await pending_repo.mark_paid(contract_id)
             logger.info(
-                "user_resolved_from_pending contract=%s telegram_id=%d",
+                "user_resolved_from_pending contract=%s telegram_id=%d action=%s",
                 contract_id,
                 telegram_user_id,
+                action,
             )
 
     # Fallback: try extracting from payload fields (backwards compat).
