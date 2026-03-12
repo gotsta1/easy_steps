@@ -273,14 +273,9 @@ async def _run_notify_job(settings: Settings) -> None:
 
 def _should_send_expiry_notification(duration_days: int | None, days_before: int) -> bool:
     """
-    Notification policy by original plan duration:
-      - 7 days plan: notify only 1 day before expiry.
-      - 30/90/180/365 days plans: notify 3/2/1 days before expiry.
-      - Unknown/legacy NULL duration: fallback to 3/2/1 to avoid silent misses.
+    Notification policy: all plans get 3/2/1 day notifications.
     """
-    if duration_days == 7:
-        return days_before == 1
-    if duration_days in {30, 90, 180, 365}:
+    if duration_days in {7, 30, 90, 180, 365} or duration_days is None:
         return days_before in {1, 2, 3}
     return days_before in {1, 2, 3}
 
