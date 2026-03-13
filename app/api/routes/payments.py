@@ -90,11 +90,16 @@ def normalize_product(raw_product: str | None) -> str:
 # ── Create payment ───────────────────────────────────────────────────────────
 
 
+VALID_CURRENCIES = {"RUB", "USD", "EUR"}
+VALID_PAYMENT_METHODS = {"SBP", "CARD"}
+
+
 class CreatePaymentRequest(BaseModel):
     telegram_user_id: int
-    plan: str | None = None  # club: "1w"/"1m"/"3m"/"6m"/"12m"; menu: optional
-    product: str = CLUB_PRODUCT_KEY  # "club" | "menu"
+    plan: str | None = None
+    product: str = CLUB_PRODUCT_KEY
     payment_method: str | None = None  # "SBP" / "CARD"
+    currency: str = "RUB"  # "RUB" / "USD" / "EUR"
 
     @field_validator("telegram_user_id", mode="before")
     @classmethod
@@ -191,11 +196,24 @@ async def create_payment(
     email = f"tg_{body.telegram_user_id}@{settings.LAVA_BUYER_EMAIL_DOMAIN}"
 
     try:
+        currency = body.currency.upper()
+        if currency not in VALID_CURRENCIES:
+            currency = "RUB"
+        method = body.payment_method
+        if method:
+            method = method.upper()
+            if method not in VALID_PAYMENT_METHODS:
+                method = None
+        # SBP only works with RUB
+        if method == "SBP" and currency != "RUB":
+            method = None
+
         result = await create_invoice(
             api_key=settings.LAVA_API_KEY,
             email=email,
             offer_id=offer_id,
-            payment_method=body.payment_method,
+            currency=currency,
+            payment_method=method,
         )
     except LavaAPIError as exc:
         logger.error("lava_create_invoice_failed error=%s", exc.detail)

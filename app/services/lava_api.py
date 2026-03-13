@@ -35,6 +35,11 @@ PROVIDER_FOR_METHOD: dict[str, str] = {
     "CARD": "SMART_GLOCAL",
 }
 
+PROVIDER_FOR_CURRENCY: dict[str, str] = {
+    "USD": "STRIPE",
+    "EUR": "STRIPE",
+}
+
 
 async def create_invoice(
     api_key: str,
@@ -64,6 +69,8 @@ async def create_invoice(
         provider = PROVIDER_FOR_METHOD.get(payment_method)
         if provider:
             body["paymentProvider"] = provider
+    elif currency in PROVIDER_FOR_CURRENCY:
+        body["paymentProvider"] = PROVIDER_FOR_CURRENCY[currency]
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(url, json=body, headers=headers)
