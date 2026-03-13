@@ -30,10 +30,9 @@ class LavaAPIError(Exception):
         super().__init__(f"Lava API error {status_code}: {detail}")
 
 
-CURRENCY_TO_PROVIDER: dict[str, str] = {
-    "RUB": "PAY2ME",
-    "USD": "STRIPE",
-    "EUR": "STRIPE",
+PROVIDER_FOR_METHOD: dict[str, str] = {
+    "SBP": "PAY2ME",
+    "CARD": "SMART_GLOCAL",
 }
 
 
@@ -42,6 +41,7 @@ async def create_invoice(
     email: str,
     offer_id: str,
     currency: str = "RUB",
+    payment_method: str | None = None,
 ) -> InvoiceResult:
     """
     Create a one-time payment invoice via Lava API.
@@ -59,9 +59,11 @@ async def create_invoice(
         "offerId": offer_id,
         "currency": currency,
     }
-    provider = CURRENCY_TO_PROVIDER.get(currency)
-    if provider:
-        body["paymentProvider"] = provider
+    if payment_method:
+        body["paymentMethod"] = payment_method
+        provider = PROVIDER_FOR_METHOD.get(payment_method)
+        if provider:
+            body["paymentProvider"] = provider
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(url, json=body, headers=headers)

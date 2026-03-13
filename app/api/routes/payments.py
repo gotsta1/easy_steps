@@ -94,6 +94,7 @@ class CreatePaymentRequest(BaseModel):
     telegram_user_id: int
     plan: str | None = None  # club: "1w"/"1m"/"3m"/"6m"/"12m"; menu: optional
     product: str = CLUB_PRODUCT_KEY  # "club" | "menu"
+    payment_method: str | None = None  # "SBP" / "CARD"
 
     @field_validator("telegram_user_id", mode="before")
     @classmethod
@@ -194,6 +195,7 @@ async def create_payment(
             api_key=settings.LAVA_API_KEY,
             email=email,
             offer_id=offer_id,
+            payment_method=body.payment_method,
         )
     except LavaAPIError as exc:
         logger.error("lava_create_invoice_failed error=%s", exc.detail)
