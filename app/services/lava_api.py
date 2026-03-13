@@ -30,6 +30,13 @@ class LavaAPIError(Exception):
         super().__init__(f"Lava API error {status_code}: {detail}")
 
 
+CURRENCY_TO_PROVIDER: dict[str, str] = {
+    "RUB": "PAY2ME",
+    "USD": "STRIPE",
+    "EUR": "STRIPE",
+}
+
+
 async def create_invoice(
     api_key: str,
     email: str,
@@ -47,11 +54,14 @@ async def create_invoice(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
-    body = {
+    body: dict[str, str] = {
         "email": email,
         "offerId": offer_id,
         "currency": currency,
     }
+    provider = CURRENCY_TO_PROVIDER.get(currency)
+    if provider:
+        body["paymentProvider"] = provider
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(url, json=body, headers=headers)
