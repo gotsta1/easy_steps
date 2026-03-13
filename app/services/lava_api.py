@@ -32,7 +32,14 @@ class LavaAPIError(Exception):
 
 PROVIDER_FOR_METHOD: dict[str, str] = {
     "SBP": "PAY2ME",
-    "CARD": "SMART_GLOCAL",
+    "PAYPAL": "PAYPAL",
+    "STRIPE": "STRIPE",
+}
+
+CARD_PROVIDER_FOR_CURRENCY: dict[str, str] = {
+    "RUB": "SMART_GLOCAL",
+    "USD": "STRIPE",
+    "EUR": "STRIPE",
 }
 
 PROVIDER_FOR_CURRENCY: dict[str, str] = {
@@ -66,7 +73,10 @@ async def create_invoice(
     }
     if payment_method:
         body["paymentMethod"] = payment_method
-        provider = PROVIDER_FOR_METHOD.get(payment_method)
+        if payment_method == "CARD":
+            provider = CARD_PROVIDER_FOR_CURRENCY.get(currency)
+        else:
+            provider = PROVIDER_FOR_METHOD.get(payment_method)
         if provider:
             body["paymentProvider"] = provider
     elif currency in PROVIDER_FOR_CURRENCY:

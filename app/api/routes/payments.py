@@ -91,7 +91,7 @@ def normalize_product(raw_product: str | None) -> str:
 
 
 VALID_CURRENCIES = {"RUB", "USD", "EUR"}
-VALID_PAYMENT_METHODS = {"SBP", "CARD"}
+VALID_PAYMENT_METHODS = {"SBP", "CARD", "PAYPAL", "STRIPE"}
 
 
 class CreatePaymentRequest(BaseModel):
