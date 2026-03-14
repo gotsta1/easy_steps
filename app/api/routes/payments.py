@@ -257,6 +257,7 @@ async def create_payment(
 class CheckPaymentRequest(BaseModel):
     telegram_user_id: int
     product: str = CLUB_PRODUCT_KEY  # "club" | "menu"
+    invoice_id: str | None = None  # specific invoice to check
 
     @field_validator("telegram_user_id", mode="before")
     @classmethod
@@ -274,6 +275,7 @@ class CheckPaymentResponse(BaseModel):
 async def check_payment(
     body: CheckPaymentRequest,
     ent_service: EntitlementService = Depends(get_entitlement_service),
+    db: AsyncSession = Depends(get_db),
 ) -> CheckPaymentResponse:
     """
     Check if the user has an active entitlement (i.e. payment was processed).
@@ -281,6 +283,9 @@ async def check_payment(
     BotHelp calls this when the user taps "Готово". The invite link is
     embedded directly in the BotHelp message button, not returned here.
     The access bot approves/declines join requests based on entitlements.
+
+    If invoice_id is provided, checks that specific invoice was paid.
+    Otherwise falls back to checking any active entitlement.
     """
     try:
         product = normalize_product(body.product)
@@ -290,6 +295,21 @@ async def check_payment(
             detail=str(exc),
         ) from exc
 
+    # If invoice_id provided, check that specific invoice
+    if body.invoice_id:
+        repo = PendingInvoiceRepo(db)
+        inv = await repo.get_by_lava_id(body.invoice_id)
+        if inv is None or not inv.paid:
+            return CheckPaymentResponse(paid="false")
+        logger.info(
+            "payment_check_ok telegram_id=%d product=%s invoice=%s",
+            body.telegram_user_id,
+            product,
+            body.invoice_id,
+        )
+        return CheckPaymentResponse(paid="true")
+
+    # Fallback: check any active entitlement
     ent = await ent_service.get_for_telegram_user(body.telegram_user_id, product)
 
     if ent is None or ent.status.value != "active":
