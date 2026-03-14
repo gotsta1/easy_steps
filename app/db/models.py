@@ -83,6 +83,10 @@ class Entitlement(Base):
     expiry_notified_3h_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Timestamp of a 10-hour-after-expiry notification.
+    expiry_notified_10h_after_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=sa.text("now()"),

@@ -179,6 +179,7 @@ class EntitlementService:
             existing.duration_days = None
             existing.expiry_notified_days = None
             existing.expiry_notified_3h_at = None
+            existing.expiry_notified_10h_after_at = None
             existing.updated_at = utcnow()
             await self._db.flush()
             ent = existing

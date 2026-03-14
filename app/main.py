@@ -199,7 +199,10 @@ async def _run_notify_job(settings: Settings) -> None:
 
     steps_map = settings.notify_steps_map
     hours_map = settings.notify_hours_map
-    if (not steps_map and not hours_map) or not settings.BOTHELP_CLIENT_ID:
+    post_expiry_hours_map = settings.notify_post_expiry_hours_map
+    if (
+        not steps_map and not hours_map and not post_expiry_hours_map
+    ) or not settings.BOTHELP_CLIENT_ID:
         return  # notifications not configured
 
     bothelp = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
@@ -265,6 +268,34 @@ async def _run_notify_job(settings: Settings) -> None:
                         hours,
                     )
 
+        # Process post-expiry thresholds (for example, 10 hours after expiry).
+        for hours in sorted(post_expiry_hours_map.keys(), reverse=True):
+            step_referral = post_expiry_hours_map[hours]
+            expired = await ent_repo.get_expired_since_hours(now, hours)
+
+            for ent in expired:
+                if not _should_send_post_expiry_notification(ent.duration_days, hours):
+                    continue
+                result = await db.execute(select(User).where(User.id == ent.user_id))
+                user: User | None = result.scalar_one_or_none()
+                if not user or not user.bothelp_subscriber_id:
+                    continue
+                try:
+                    await bothelp.trigger_bot_step(
+                        bothelp_subscriber_id=user.bothelp_subscriber_id,
+                        bot_referral=settings.BOTHELP_BOT_REFERRAL,
+                        step_referral=step_referral,
+                    )
+                    ent.expiry_notified_10h_after_at = now
+                    total_sent += 1
+                except BotHelpAPIError:
+                    logger.warning(
+                        "notify_failed tg_id=%d bothelp_id=%d post_expiry_hours=%d",
+                        user.telegram_user_id,
+                        user.bothelp_subscriber_id,
+                        hours,
+                    )
+
         await db.commit()
 
     if total_sent:
@@ -283,6 +314,15 @@ def _should_send_expiry_notification(duration_days: int | None, days_before: int
 def _should_send_hour_notification(duration_days: int | None, hours_before: int) -> bool:
     """Hour-level notification policy: all plans get a 3-hour reminder."""
     if hours_before == 3:
+        return duration_days in {7, 30, 90, 180, 365} or duration_days is None
+    return False
+
+
+def _should_send_post_expiry_notification(
+    duration_days: int | None, hours_after: int
+) -> bool:
+    """Post-expiry policy: send 10 hours after expiry for all expiring plans."""
+    if hours_after == 10:
         return duration_days in {7, 30, 90, 180, 365} or duration_days is None
     return False
 

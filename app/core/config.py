@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
     BOTHELP_STEP_NOTIFY_1D: str = ""         # step referral: "остался 1 день"
     BOTHELP_STEP_NOTIFY_3H: str = ""         # step referral: "осталось 3 часа" (trial week)
+    BOTHELP_STEP_NOTIFY_EXPIRED_10H: str = ""  # step referral: "истекло 10 часов назад"
     BOTHELP_WEBHOOK_PATH: str = "/bothelp/webhook"
 
     # ── Lava.top ─────────────────────────────────────────────────────────────
@@ -112,6 +113,17 @@ class Settings(BaseSettings):
         mapping: dict[int, str] = {}
         for hours, step in [
             (3, self.BOTHELP_STEP_NOTIFY_3H),
+        ]:
+            if step:
+                mapping[hours] = step
+        return mapping
+
+    @property
+    def notify_post_expiry_hours_map(self) -> dict[int, str]:
+        """Map hours-after-expiry → BotHelp step referral. Only configured steps."""
+        mapping: dict[int, str] = {}
+        for hours, step in [
+            (10, self.BOTHELP_STEP_NOTIFY_EXPIRED_10H),
         ]:
             if step:
                 mapping[hours] = step
