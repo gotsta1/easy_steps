@@ -1,7 +1,7 @@
 """add expiry_notified_10h_after_at to entitlements
 
 Revision ID: 0007_add_expiry_notified_10h_after_at
-Revises: 0006_add_duration_days_and_3h_notify
+Revises: 0006
 Create Date: 2026-03-14
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision = "0007_add_expiry_notified_10h_after_at"
-down_revision = "0006_add_duration_days_and_3h_notify"
+down_revision = "0006"
 branch_labels = None
 depends_on = None
 
