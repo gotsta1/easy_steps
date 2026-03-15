@@ -295,21 +295,7 @@ async def check_payment(
             detail=str(exc),
         ) from exc
 
-    # If invoice_id provided, check that specific invoice
-    if body.invoice_id:
-        repo = PendingInvoiceRepo(db)
-        inv = await repo.get_by_lava_id(body.invoice_id)
-        if inv is None or not inv.paid:
-            return CheckPaymentResponse(paid="false")
-        logger.info(
-            "payment_check_ok telegram_id=%d product=%s invoice=%s",
-            body.telegram_user_id,
-            product,
-            body.invoice_id,
-        )
-        return CheckPaymentResponse(paid="true")
-
-    # Fallback: check any active entitlement
+    # Check if user has an active entitlement
     ent = await ent_service.get_for_telegram_user(body.telegram_user_id, product)
 
     if ent is None or ent.status.value != "active":
