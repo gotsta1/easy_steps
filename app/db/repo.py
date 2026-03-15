@@ -247,6 +247,7 @@ class PendingInvoiceRepo:
         payment_url: str,
         cuid: str | None = None,
         first_name: str | None = None,
+        ref: str | None = None,
     ) -> PendingInvoice:
         inv = PendingInvoice(
             lava_invoice_id=lava_invoice_id,
@@ -256,6 +257,7 @@ class PendingInvoiceRepo:
             payment_url=payment_url,
             cuid=cuid,
             first_name=first_name,
+            ref=ref,
         )
         self._db.add(inv)
         await self._db.flush()

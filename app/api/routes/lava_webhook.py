@@ -163,8 +163,13 @@ async def lava_webhook_handler(
                 telegram_user_id, duration_days, product_key
             )
 
-        # Record sale to Google Sheets
-        if settings.GSHEET_CREDENTIALS_PATH and settings.GSHEET_SPREADSHEET_ID:
+        # Record sale to Google Sheets (only for ref="tanya")
+        pending_ref = pending.ref if pending else None
+        if (
+            settings.GSHEET_CREDENTIALS_PATH
+            and settings.GSHEET_SPREADSHEET_ID
+            and pending_ref == "tanya"
+        ):
             from app.services.google_sheets import append_sale
 
             amount = payload.get("amount", 0)
@@ -177,12 +182,8 @@ async def lava_webhook_handler(
                 from app.core.time import utcnow
                 sale_dt = utcnow()
 
-            # Get user info from pending invoice
-            first_name = ""
-            cuid = ""
-            if pending:
-                first_name = pending.first_name or ""
-                cuid = pending.cuid or ""
+            first_name = pending.first_name or "" if pending else ""
+            cuid = pending.cuid or "" if pending else ""
 
             try:
                 append_sale(

@@ -234,6 +234,7 @@ async def create_payment(
         payment_url=result.payment_url,
         cuid=body.cuid or None,
         first_name=body.first_name or None,
+        ref=body.ref or None,
     )
 
     logger.info(

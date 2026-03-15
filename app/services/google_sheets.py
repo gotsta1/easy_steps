@@ -41,7 +41,7 @@ def append_sale(
             account,
             amount,
             user_name,
-            date_time.strftime("%d.%m.%y"),
+            date_time.strftime("%d.%m.%y %H.%M.%S"),
             cuid,
         ]
         sheet.append_row(row, value_input_option="USER_ENTERED")
