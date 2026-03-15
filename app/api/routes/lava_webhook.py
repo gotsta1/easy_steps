@@ -163,6 +163,41 @@ async def lava_webhook_handler(
                 telegram_user_id, duration_days, product_key
             )
 
+        # Record sale to Google Sheets
+        if settings.GSHEET_CREDENTIALS_PATH and settings.GSHEET_SPREADSHEET_ID:
+            from app.services.google_sheets import append_sale
+
+            amount = payload.get("amount", 0)
+            timestamp_str = payload.get("timestamp", "")
+            from datetime import datetime as dt
+
+            try:
+                sale_dt = dt.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                from app.core.time import utcnow
+                sale_dt = utcnow()
+
+            # Get user info from pending invoice
+            first_name = ""
+            cuid = ""
+            if pending:
+                first_name = pending.first_name or ""
+                cuid = pending.cuid or ""
+
+            try:
+                append_sale(
+                    credentials_path=settings.GSHEET_CREDENTIALS_PATH,
+                    spreadsheet_id=settings.GSHEET_SPREADSHEET_ID,
+                    sheet_name=settings.GSHEET_SHEET_NAME,
+                    account=str(telegram_user_id),
+                    amount=amount,
+                    user_name=first_name,
+                    date_time=sale_dt,
+                    cuid=cuid,
+                )
+            except Exception:
+                logger.exception("gsheet_record_failed")
+
     elif action == "payment_failed":
         product_key = offer_details[0] if offer_details is not None else CLUB_PRODUCT_KEY
         await ent_service.apply_payment_failed(telegram_user_id, product_key)

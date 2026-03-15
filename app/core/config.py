@@ -129,6 +129,11 @@ class Settings(BaseSettings):
                 mapping[hours] = step
         return mapping
 
+    # ── Google Sheets ────────────────────────────────────────────────────────
+    GSHEET_CREDENTIALS_PATH: str = ""  # path to service account JSON
+    GSHEET_SPREADSHEET_ID: str = ""    # spreadsheet ID from URL
+    GSHEET_SHEET_NAME: str = "Лист1"   # worksheet name
+
     # ── Admin ────────────────────────────────────────────────────────────────
     ADMIN_TOKEN: str
 

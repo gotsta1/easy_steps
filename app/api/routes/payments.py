@@ -100,6 +100,9 @@ class CreatePaymentRequest(BaseModel):
     product: str = CLUB_PRODUCT_KEY
     payment_method: str | None = None  # "SBP" / "CARD"
     currency: str = "RUB"  # "RUB" / "USD" / "EUR"
+    ref: str | None = None
+    cuid: str | None = None
+    first_name: str | None = None
 
     @field_validator("telegram_user_id", mode="before")
     @classmethod
@@ -229,6 +232,8 @@ async def create_payment(
         offer_id=offer_id,
         plan=plan,
         payment_url=result.payment_url,
+        cuid=body.cuid or None,
+        first_name=body.first_name or None,
     )
 
     logger.info(

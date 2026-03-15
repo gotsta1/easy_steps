@@ -121,6 +121,8 @@ class PendingInvoice(Base):
     plan: Mapped[str] = mapped_column(Text, nullable=False)  # "1w", "1m", "3m", "6m", "12m"
     payment_url: Mapped[str] = mapped_column(Text, nullable=False)
     paid: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    cuid: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    first_name: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=sa.text("now()"),
