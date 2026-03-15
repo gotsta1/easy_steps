@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 import gspread
 
@@ -41,7 +41,7 @@ def append_sale(
             account,
             amount,
             user_name,
-            date_time.strftime("%d.%m.%y %H.%M.%S"),
+            date_time.astimezone(timezone(timedelta(hours=3))).strftime("%d.%m.%y %H:%M:%S"),
             cuid,
         ]
         sheet.append_row(row, value_input_option="USER_ENTERED")
