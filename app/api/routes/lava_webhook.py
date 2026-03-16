@@ -34,6 +34,14 @@ from app.services.entitlements import (
 
 logger = logging.getLogger(__name__)
 
+# Fixed RUB prices per plan (used for Google Sheets recording)
+PLAN_PRICE_RUB: dict[str, float] = {
+    "1w": 329,
+    "1m": 1290,
+    "3m": 3490,
+    "6m": 6490,
+}
+
 
 def _extract_contract_id(payload: dict) -> str | None:
     """Extract contractId from the webhook payload (Lava v3 field)."""
@@ -172,7 +180,8 @@ async def lava_webhook_handler(
         ):
             from app.services.google_sheets import append_sale
 
-            amount = payload.get("amount", 0)
+            plan = pending.plan if pending else None
+            amount = PLAN_PRICE_RUB.get(plan, payload.get("amount", 0))
             timestamp_str = payload.get("timestamp", "")
             from datetime import datetime as dt
 
