@@ -50,7 +50,15 @@ class Settings(BaseSettings):
     BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
     BOTHELP_STEP_NOTIFY_1D: str = ""         # step referral: "остался 1 день"
     BOTHELP_STEP_NOTIFY_3H: str = ""         # step referral: "осталось 3 часа" (trial week)
-    # Post-expiry step IDs are hardcoded in notify_post_expiry_hours_map below.
+    BOTHELP_STEP_NOTIFY_EXPIRED_10H: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_3D: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_1W: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_10D: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_15D: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_20D: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_25D: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_30D: str = ""
+    BOTHELP_STEP_NOTIFY_EXPIRED_35D: str = ""
     BOTHELP_WEBHOOK_PATH: str = "/bothelp/webhook"
 
     # ── Lava.top ─────────────────────────────────────────────────────────────
@@ -120,18 +128,22 @@ class Settings(BaseSettings):
 
     @property
     def notify_post_expiry_hours_map(self) -> dict[int, str]:
-        """Map hours-after-expiry → BotHelp step referral (hardcoded)."""
-        return {
-            10:  "1773487188a2493a90571f",
-            72:  "1773729997c4381a3fc9c7",
-            168: "177351288382341bcea3b1",
-            240: "1773730088df5c45ae3d2d",
-            360: "1773730106f9ccee027c7d",
-            480: "1773730119b69ed65566aa",
-            600: "17737301331ada07b4745a",
-            720: "1773512888f9777580c840",
-            840: "17737301509bbb2a8575dd",
-        }
+        """hours-after-expiry → BotHelp step referral."""
+        mapping: dict[int, str] = {}
+        for hours, step in [
+            (10, self.BOTHELP_STEP_NOTIFY_EXPIRED_10H),
+            (72, self.BOTHELP_STEP_NOTIFY_EXPIRED_3D),
+            (168, self.BOTHELP_STEP_NOTIFY_EXPIRED_1W),
+            (240, self.BOTHELP_STEP_NOTIFY_EXPIRED_10D),
+            (360, self.BOTHELP_STEP_NOTIFY_EXPIRED_15D),
+            (480, self.BOTHELP_STEP_NOTIFY_EXPIRED_20D),
+            (600, self.BOTHELP_STEP_NOTIFY_EXPIRED_25D),
+            (720, self.BOTHELP_STEP_NOTIFY_EXPIRED_30D),
+            (840, self.BOTHELP_STEP_NOTIFY_EXPIRED_35D),
+        ]:
+            if step:
+                mapping[hours] = step
+        return mapping
 
     # ── Google Sheets ────────────────────────────────────────────────────────
     GSHEET_CREDENTIALS_PATH: str = ""  # path to service account JSON
