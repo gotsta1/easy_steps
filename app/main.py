@@ -286,12 +286,7 @@ async def _run_notify_job(settings: Settings) -> None:
                         bot_referral=settings.BOTHELP_BOT_REFERRAL,
                         step_referral=step_referral,
                     )
-                    if hours <= 10:
-                        ent.expiry_notified_10h_after_at = now
-                    elif hours <= 168:
-                        ent.expiry_notified_1w_after_at = now
-                    else:
-                        ent.expiry_notified_30d_after_at = now
+                    ent.last_post_expiry_hours = hours
                     total_sent += 1
                 except BotHelpAPIError:
                     logger.warning(
@@ -326,10 +321,8 @@ def _should_send_hour_notification(duration_days: int | None, hours_before: int)
 def _should_send_post_expiry_notification(
     duration_days: int | None, hours_after: int
 ) -> bool:
-    """Post-expiry policy: send at 10h, 1 week, and 30 days after expiry."""
-    if hours_after in {10, 168, 720}:
-        return duration_days in {7, 30, 90, 180, 365} or duration_days is None
-    return False
+    """Post-expiry policy: send at all configured thresholds for all plans."""
+    return hours_after in {10, 72, 168, 240, 360, 480, 600, 720, 840}
 
 
 async def _run_kick_job(settings: Settings) -> None:

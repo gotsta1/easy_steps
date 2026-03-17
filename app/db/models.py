@@ -83,17 +83,10 @@ class Entitlement(Base):
     expiry_notified_3h_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
-    # Timestamp of a 10-hour-after-expiry notification.
-    expiry_notified_10h_after_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
-    )
-    # Timestamp of a 1-week-after-expiry notification.
-    expiry_notified_1w_after_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
-    )
-    # Timestamp of a 30-days-after-expiry notification.
-    expiry_notified_30d_after_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
+    # Tracks the highest post-expiry notification threshold (in hours) already sent.
+    # NULL = none sent yet. Reset to NULL on renewal.
+    last_post_expiry_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

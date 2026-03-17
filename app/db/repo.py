@@ -101,9 +101,7 @@ class EntitlementRepo:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal
                     ent.expiry_notified_3h_at = None
-                    ent.expiry_notified_10h_after_at = None
-                    ent.expiry_notified_1w_after_at = None
-                    ent.expiry_notified_30d_after_at = None
+                    ent.last_post_expiry_hours = None
                 ent.active_until = active_until
             if duration_days is not None:
                 ent.duration_days = duration_days
@@ -169,12 +167,9 @@ class EntitlementRepo:
             select(Entitlement).where(
                 Entitlement.active_until.isnot(None),
                 Entitlement.active_until <= cutoff,
-                Entitlement.expiry_notified_10h_after_at.is_(None)
-                if hours <= 10
-                else (
-                    Entitlement.expiry_notified_1w_after_at.is_(None)
-                    if hours <= 168
-                    else Entitlement.expiry_notified_30d_after_at.is_(None)
+                sa.or_(
+                    Entitlement.last_post_expiry_hours.is_(None),
+                    Entitlement.last_post_expiry_hours < hours,
                 ),
                 Entitlement.status.in_(
                     [
