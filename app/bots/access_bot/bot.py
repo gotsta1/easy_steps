@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
 from app.core.config import get_settings
@@ -16,9 +17,16 @@ def get_bot() -> Bot:
     global _bot
     if _bot is None:
         settings = get_settings()
+        session = None
+        if settings.TELEGRAM_PROXY_URL:
+            from aiohttp_socks import ProxyConnector
+
+            connector = ProxyConnector.from_url(settings.TELEGRAM_PROXY_URL)
+            session = AiohttpSession(connector=connector)
         _bot = Bot(
             token=settings.ACCESS_BOT_TOKEN,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+            session=session,
         )
     return _bot
 

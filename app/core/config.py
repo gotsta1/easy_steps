@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     # ── Admin ────────────────────────────────────────────────────────────────
     ADMIN_TOKEN: str
 
+    # ── Telegram proxy (WARP/SOCKS5) ─────────────────────────────────────────
+    # e.g. socks5://127.0.0.1:40000
+    TELEGRAM_PROXY_URL: str = ""
+
     # ── Observability ────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
     SENTRY_DSN: str | None = None
