@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from aiogram import Bot, Dispatcher, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import ChatJoinRequest
 
 from app.core.config import get_settings
@@ -59,7 +60,13 @@ async def handle_join_request(event: ChatJoinRequest, bot: Bot) -> None:
     tg_svc = TelegramAccessService(bot, event.chat.id)
 
     if approved:
-        await tg_svc.approve_join_request(telegram_user_id)
+        try:
+            await tg_svc.approve_join_request(telegram_user_id)
+        except TelegramBadRequest as e:
+            if "USER_ALREADY_PARTICIPANT" in str(e):
+                logger.info("user_already_in_channel telegram_id=%d", telegram_user_id)
+            else:
+                raise
         logger.info(
             "join_approved telegram_id=%d product=%s",
             telegram_user_id,
