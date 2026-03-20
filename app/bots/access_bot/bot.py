@@ -19,10 +19,7 @@ def get_bot() -> Bot:
         settings = get_settings()
         session = None
         if settings.TELEGRAM_PROXY_URL:
-            from aiohttp_socks import ProxyConnector
-
-            connector = ProxyConnector.from_url(settings.TELEGRAM_PROXY_URL)
-            session = AiohttpSession(connector=connector)
+            session = AiohttpSession(proxy=settings.TELEGRAM_PROXY_URL)
         _bot = Bot(
             token=settings.ACCESS_BOT_TOKEN,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
