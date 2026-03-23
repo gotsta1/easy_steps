@@ -359,19 +359,6 @@ async def check_payment(
     )
     tg_svc = TelegramAccessService(bot, channel_id)
 
-    # Already in channel — no invite needed, clear cache
-    if await tg_svc.is_member(body.telegram_user_id):
-        _invite_cache.pop(
-            (body.telegram_user_id, product), None,
-        )
-        logger.info(
-            "payment_check_ok telegram_id=%d product=%s "
-            "already_member=true",
-            body.telegram_user_id,
-            product,
-        )
-        return CheckPaymentResponse(paid="true")
-
     # Reuse cached invite if still valid
     cached = _get_cached_invite(
         body.telegram_user_id, product,
