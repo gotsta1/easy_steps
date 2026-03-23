@@ -12,7 +12,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_entitlement_service, require_admin_token
+from aiogram import Bot
+
+from app.api.deps import (
+    get_bot,
+    get_entitlement_service,
+    require_admin_token,
+)
 from app.core.config import Settings, get_settings
 from app.db.repo import PendingInvoiceRepo
 from app.db.session import get_db
@@ -22,6 +28,7 @@ from app.services.entitlements import (
     EntitlementService,
 )
 from app.services.lava_api import LavaAPIError, create_invoice
+from app.services.telegram_access import TelegramAccessService
 
 logger = logging.getLogger(__name__)
 
@@ -275,23 +282,60 @@ class CheckPaymentRequest(BaseModel):
 
 class CheckPaymentResponse(BaseModel):
     paid: str  # "true" / "false" as string for BotHelp compatibility
+    invite_link_path: str = ""
+
+
+# Cache: (telegram_user_id, product) → (invite_path, expires_at)
+# Prevents spamming invite link generation — reuses link while valid.
+_invite_cache: dict[tuple[int, str], tuple[str, datetime]] = {}
+_INVITE_TTL_HOURS = 2
+
+
+def _get_cached_invite(
+    telegram_user_id: int, product: str,
+) -> str | None:
+    """Return cached invite path if still valid, else None."""
+    from app.core.time import utcnow
+
+    key = (telegram_user_id, product)
+    cached = _invite_cache.get(key)
+    if cached is None:
+        return None
+    path, expires_at = cached
+    if utcnow() >= expires_at:
+        del _invite_cache[key]
+        return None
+    return path
+
+
+def _set_cached_invite(
+    telegram_user_id: int, product: str, path: str,
+) -> None:
+    from datetime import timedelta
+
+    from app.core.time import utcnow
+
+    key = (telegram_user_id, product)
+    _invite_cache[key] = (
+        path,
+        utcnow() + timedelta(hours=_INVITE_TTL_HOURS),
+    )
 
 
 @router.post("/check", response_model=CheckPaymentResponse)
 async def check_payment(
     body: CheckPaymentRequest,
+    bot: Bot = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
     ent_service: EntitlementService = Depends(get_entitlement_service),
     db: AsyncSession = Depends(get_db),
 ) -> CheckPaymentResponse:
     """
     Check if the user has an active entitlement (i.e. payment was processed).
 
-    BotHelp calls this when the user taps "Готово". The invite link is
-    embedded directly in the BotHelp message button, not returned here.
-    The access bot approves/declines join requests based on entitlements.
-
-    If invoice_id is provided, checks that specific invoice was paid.
-    Otherwise falls back to checking any active entitlement.
+    BotHelp calls this when the user taps "Готово" or "Получить ссылку".
+    If paid, returns a one-time invite link (expires in 2h).
+    Reuses the same link while it's still valid to prevent spam.
     """
     try:
         product = normalize_product(body.product)
@@ -301,15 +345,65 @@ async def check_payment(
             detail=str(exc),
         ) from exc
 
-    # Check if user has an active entitlement
-    ent = await ent_service.get_for_telegram_user(body.telegram_user_id, product)
+    ent = await ent_service.get_for_telegram_user(
+        body.telegram_user_id, product,
+    )
 
     if ent is None or ent.status.value != "active":
         return CheckPaymentResponse(paid="false")
+
+    channel_id = (
+        settings.TG_MENU_CHANNEL_ID
+        if product == MENU_PRODUCT_KEY
+        else settings.TG_CHANNEL_ID
+    )
+    tg_svc = TelegramAccessService(bot, channel_id)
+
+    # Already in channel — no invite needed, clear cache
+    if await tg_svc.is_member(body.telegram_user_id):
+        _invite_cache.pop(
+            (body.telegram_user_id, product), None,
+        )
+        logger.info(
+            "payment_check_ok telegram_id=%d product=%s "
+            "already_member=true",
+            body.telegram_user_id,
+            product,
+        )
+        return CheckPaymentResponse(paid="true")
+
+    # Reuse cached invite if still valid
+    cached = _get_cached_invite(
+        body.telegram_user_id, product,
+    )
+    if cached:
+        logger.info(
+            "payment_check_ok telegram_id=%d product=%s "
+            "cached=true",
+            body.telegram_user_id,
+            product,
+        )
+        return CheckPaymentResponse(
+            paid="true",
+            invite_link_path=cached,
+        )
+
+    # Generate new one-time invite link
+    invite_link = await tg_svc.create_one_time_invite()
+    invite_path = invite_link.replace(
+        "https://t.me/", "",
+    )
+
+    _set_cached_invite(
+        body.telegram_user_id, product, invite_path,
+    )
 
     logger.info(
         "payment_check_ok telegram_id=%d product=%s",
         body.telegram_user_id,
         product,
     )
-    return CheckPaymentResponse(paid="true")
+    return CheckPaymentResponse(
+        paid="true",
+        invite_link_path=invite_path,
+    )
