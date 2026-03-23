@@ -46,7 +46,6 @@ class TelegramAccessService:
         """Create a single-use invite link that expires in 2 hours."""
         link = await self._bot.create_chat_invite_link(
             chat_id=self._channel_id,
-            member_limit=1,
             expire_date=utcnow() + timedelta(hours=2),
         )
         logger.info("invite_link_created channel=%d", self._channel_id)
