@@ -1,68 +1,132 @@
-# EasySteps Backend
+# EasySteps — Telegram Subscription Access Bot
 
-Telegram access automation backend.
-Lava.top payments → Postgres entitlements → Access Bot approves/declines channel join requests.
+Production-ready backend automating paid access to private Telegram channels.
+Handles the full lifecycle: payment processing → subscription management → channel access → expiry enforcement.
+
+**Live at:** [esyaaaaa.online](https://esyaaaaa.online)
 
 ---
 
-## Architecture overview
+## What it does
+
+1. User clicks "Subscribe" in a BotHelp chatbot flow
+2. Backend creates a Lava.top invoice and returns a payment URL
+3. User pays → Lava sends a webhook → backend activates subscription in Postgres
+4. Backend generates a one-time Telegram invite link and returns it to BotHelp
+5. User clicks the invite link and joins the private channel instantly
+6. When subscription expires → bot automatically kicks the user from the channel
+7. Post-expiry notifications are sent via BotHelp at configurable intervals
+
+---
+
+## Architecture
 
 ```
-Lava.top  ──POST /lava/webhook──►  FastAPI  ──► EntitlementService ──► Postgres
-                                                                          │
-BotHelp   ──POST /payments/create──► FastAPI ──► Lava invoice             │
-          ──POST /payments/check ──► FastAPI ──► TG Bot API (invite link) │
-                                                                          │
-Telegram  ──POST /tg/access/webhook──► aiogram dispatcher                │
-                                         └─► can_approve_join() ◄────────┘
+BotHelp chatbot
+    │
+    ├─ POST /payments/create ──► Lava.top API (create invoice)
+    │                                  │
+    │                          payment.success webhook
+    │                                  │
+    ├─ POST /lava/webhook  ────────────►──► EntitlementService ──► Postgres
+    │                                                                  │
+    └─ POST /payments/check ──────────────────────────────────────────┘
+         └─► TelegramAccessService (create one-time invite link)
+
+Telegram
+    └─ POST /tg/access/webhook ──► aiogram ──► approve_join_request()
+
+Background jobs (every 15 min)
+    ├─ Kick expired members (ban + unban)
+    └─ Send post-expiry notifications via BotHelp API
 ```
 
-**Stack:** Python 3.12 · FastAPI · aiogram v3 · SQLAlchemy 2.0 async · asyncpg · Alembic · Postgres · Docker · Railway
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Language | Python 3.12 |
+| Web framework | FastAPI + uvicorn |
+| Telegram bot | aiogram v3 (webhook mode) |
+| ORM | SQLAlchemy 2.0 async + asyncpg |
+| Migrations | Alembic |
+| Database | PostgreSQL 16 |
+| Payments | Lava.top API |
+| Chatbot | BotHelp |
+| Analytics | Google Sheets API |
+| Reverse proxy | Caddy (auto HTTPS) |
+| Deploy | Docker Compose on VPS (Netherlands) |
+
+---
+
+## Key features
+
+- **Idempotent webhook processing** — every Lava event stored by stable `event_id`, safe to retry
+- **Subscription stacking** — renewals extend from the current `active_until`, not from today
+- **One-time invite links** — Telegram `member_limit=1` + 2h TTL, spam-protected via in-memory cache
+- **Automatic kick on expiry** — ban + instant unban so users can rejoin after renewal
+- **9-threshold post-expiry notifications** — 10h, 3d, 1w, 10d, 15d, 20d, 25d, 30d, 35d after expiry
+- **Google Sheets analytics** — successful payments written to spreadsheet with Moscow timezone
+- **Daily database backups** — pg_dump sent to Telegram every night at 3:00 UTC
+- **Configurable via env** — zero hardcoded business logic, everything in `.env`
+
+---
+
+## Project structure
+
+```
+app/
+  main.py                      # FastAPI app factory + lifespan + background jobs
+  core/
+    config.py                  # Pydantic Settings (fail-fast, lru_cache)
+    logging.py                 # structlog JSON setup
+    security.py                # Lava Basic Auth verification
+    time.py                    # utcnow(), utcnow_plus(), ensure_tz()
+  db/
+    models.py                  # User, Entitlement, LavaEvent, PendingInvoice
+    repo.py                    # UserRepo, EntitlementRepo, LavaEventRepo, PendingInvoiceRepo
+    session.py                 # AsyncEngine + get_db() dependency
+  services/
+    entitlements.py            # can_approve_join() (pure) + EntitlementService
+    lava.py                    # classify_event, extract_* (pure parsing)
+    lava_api.py                # Lava API client: create_invoice()
+    telegram_access.py         # TelegramAccessService (invite, approve, kick)
+    google_sheets.py           # Append payment rows to Google Sheets
+    bothelp_api.py             # BotHelp OAuth2 client for sending notifications
+  api/routes/
+    health.py                  # GET /health
+    payments.py                # POST /payments/create + POST /payments/check
+    lava_webhook.py            # POST /lava/webhook
+    invite.py                  # POST /invites/club
+    pay_redirect.py            # GET /pay/{invoice_id} → redirect to Lava
+    admin.py                   # Admin endpoints
+  bots/access_bot/
+    bot.py                     # Bot + Dispatcher singletons
+    handlers.py                # chat_join_request handler
+    webhook.py                 # Webhook registration
+migrations/versions/           # 11 Alembic migrations
+tests/
+  test_entitlements.py         # Pure unit tests for can_approve_join()
+```
 
 ---
 
 ## Local development
 
-### 1. Clone & configure
-
 ```bash
-git clone <repo>
+git clone https://github.com/gotsta1/easy_steps.git
 cd easy_steps
 cp .env.example .env
-# Edit .env — at minimum set ACCESS_BOT_TOKEN, TG_CHANNEL_ID, LAVA_SECRET,
-# ADMIN_TOKEN, ACCESS_BOT_SECRET_TOKEN, and APP_PUBLIC_BASE_URL.
-```
+# Fill in ACCESS_BOT_TOKEN, TG_CHANNEL_ID, LAVA_* and other required vars
 
-### 2. Start services
-
-```bash
 docker compose up --build
+# App: http://localhost:8000
+# Postgres: localhost:5432 (easysteps/easysteps/easysteps)
 ```
 
-The app starts on `http://localhost:8000`.
-Postgres is available at `localhost:5432` (user/pass/db: `easysteps`).
-
-### 3. Run migrations (first time & after schema changes)
-
-```bash
-# While docker compose is running:
-docker compose exec app alembic upgrade head
-
-# Or directly against the local DB:
-DATABASE_URL=postgresql+asyncpg://easysteps:easysteps@localhost/easysteps \
-  alembic upgrade head
-```
-
-### 4. Create a new migration after model changes
-
-```bash
-alembic revision --autogenerate -m "describe your change"
-# Review the generated file in migrations/versions/, then:
-alembic upgrade head
-```
-
-### 5. Run tests
-
+Run tests:
 ```bash
 pip install -e ".[dev]"
 pytest tests/ -v
@@ -70,221 +134,50 @@ pytest tests/ -v
 
 ---
 
+## Production deployment
+
+```bash
+# On VPS (Ubuntu 22.04)
+git clone https://github.com/gotsta1/easy_steps.git /opt/easy_steps
+cd /opt/easy_steps
+cp .env.example .env  # fill in all values
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Caddy handles SSL certificates automatically via Let's Encrypt.
+
+---
+
 ## Environment variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `APP_ENV` | no | `dev` | `dev` or `prod` |
-| `APP_HOST` | no | `0.0.0.0` | Bind address |
-| `APP_PORT` | no | `8000` | Bind port |
-| `APP_PUBLIC_BASE_URL` | **yes** | — | Public HTTPS URL, e.g. `https://app.up.railway.app` |
-| `DATABASE_URL` | **yes** | — | Postgres URL; `postgres://` is auto-rewritten |
-| `ACCESS_BOT_TOKEN` | **yes** | — | BotFather token for the Access Bot |
-| `ACCESS_BOT_WEBHOOK_PATH` | no | `/tg/access/webhook` | Path where Telegram sends updates |
-| `ACCESS_BOT_SECRET_TOKEN` | **yes** | — | Random secret passed to `setWebhook`; validated on every update |
-| `TG_CHANNEL_ID` | **yes** | — | Numeric channel ID, e.g. `-1001234567890` |
-| `TG_MENU_CHANNEL_ID` | no | `0` | Menu channel ID; `0` disables menu flows |
-| `KICK_ON_EXPIRE` | no | `false` | Kick expired members from the channel |
-| `KICK_GRACE_SECONDS` | no | `0` | Extra seconds after `active_until` before kicking |
-| `KICK_CRON_SECONDS` | no | `3600` | How often the kick job runs |
-| `LAVA_WEBHOOK_PATH` | no | `/lava/webhook` | Path where Lava sends webhooks |
-| `LAVA_OFFER_MENU` | no | `` | Lava offer ID for one-time menu product |
-| `LAVA_SECRET` | **yes** | — | HMAC-SHA256 signing secret from Lava dashboard |
-| `LAVA_PRODUCT_KEY_CLUB` | no | `club_monthly` | Internal key for the club subscription |
-| `ADMIN_TOKEN` | **yes** | — | `X-Admin-Token` header value for admin endpoints |
-| `LOG_LEVEL` | no | `INFO` | Python logging level |
-| `SENTRY_DSN` | no | — | Optional Sentry DSN |
+See [.env.example](.env.example) for the full list with descriptions.
+
+Required:
+- `ACCESS_BOT_TOKEN` — Telegram bot token from BotFather
+- `TG_CHANNEL_ID` — numeric ID of the private channel
+- `LAVA_API_KEY` — Lava.top API key
+- `LAVA_WEBHOOK_LOGIN` / `LAVA_WEBHOOK_PASSWORD` — Basic Auth for Lava webhooks
+- `LAVA_OFFER_CLUB_*` — offer IDs for each subscription plan
+- `DATABASE_URL` — PostgreSQL connection string
+- `APP_PUBLIC_BASE_URL` — public HTTPS URL for webhook registration
 
 ---
 
-## Telegram webhook setup
+## API endpoints
 
-### 1. Create the Access Bot
-
-1. Talk to [@BotFather](https://t.me/BotFather) → `/newbot`.
-2. Copy the token to `ACCESS_BOT_TOKEN`.
-
-### 2. Add the bot to your private channel as Administrator
-
-The bot needs these admin permissions:
-- **Invite users via link** — to create invite links
-- **Manage chat members** (approve/decline join requests, kick if enabled)
-
-Steps:
-1. Open channel settings → Administrators → Add Administrator.
-2. Search for your bot by username.
-3. Enable the required permissions above.
-
-### 3. Register the webhook
-
-The app calls `setWebhook` automatically at startup using:
-
-```
-{APP_PUBLIC_BASE_URL}{ACCESS_BOT_WEBHOOK_PATH}
-# e.g. https://app.up.railway.app/tg/access/webhook
-```
-
-To verify:
-```bash
-curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
-```
-
-For local development, use [ngrok](https://ngrok.com/):
-```bash
-ngrok http 8000
-# Copy the https URL to APP_PUBLIC_BASE_URL in .env, then restart the app.
-```
-
-### 4. Enable join requests on the channel
-
-In channel settings → set **Join via link** to **By Request** (not direct join).
-Alternatively, always use the invite links created by `/invites/club` — these already set `creates_join_request=True`.
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Health check |
+| POST | `/payments/create` | Create Lava invoice, return payment URL |
+| POST | `/payments/check` | Check payment status, return invite link |
+| GET | `/pay/{invoice_id}` | Redirect to Lava payment page |
+| POST | `/lava/webhook` | Receive Lava payment events |
+| POST | `/tg/access/webhook` | Receive Telegram bot updates |
+| POST | `/bothelp/webhook` | Receive BotHelp subscriber events |
+| POST | `/invites/club` | Generate club invite link (admin) |
 
 ---
 
-## Lava.top webhook configuration
+## License
 
-In your Lava dashboard → Webhooks:
-
-1. Set the webhook URL to: `{APP_PUBLIC_BASE_URL}/lava/webhook`
-   (or whatever `LAVA_WEBHOOK_PATH` is set to).
-
-2. Set the signing secret to match `LAVA_SECRET`.
-
-3. **User identification** — the webhook payload must include the buyer's Telegram user ID.
-   The app looks for it in (in priority order):
-   - `payload.metadata.telegram_user_id`
-   - `payload.comment` / `payload.purpose` (first integer token ≥ 5 digits)
-   - `payload.custom_fields.telegram_user_id`
-   - `payload.buyer.telegram_user_id`
-
-   Configure your Lava product to pass the Telegram user ID via one of these fields.
-   If the ID is missing, the event is stored but not processed (logged as `lava_unmatched_user`).
-
-4. **Signature scheme** — currently implemented as HMAC-SHA256 over the raw body,
-   checked against the `X-Signature` header. See `app/core/security.py` to adjust
-   once Lava's exact scheme is confirmed.
-
----
-
-## API reference
-
-### `GET /health`
-
-```json
-{"status": "ok", "env": "prod"}
-```
-
-### `POST /lava/webhook`
-
-Called by Lava on payment events. No auth from your side — Lava sends a signature header.
-
-### `POST /invites/club`
-
-**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
-
-**Body:**
-```json
-{"telegram_user_id": 123456789}
-```
-
-**Response:**
-```json
-{
-  "invite_link": "https://t.me/+xxxxxxxxxxxx",
-  "expires_at": "2024-06-01T12:10:00+00:00"
-}
-```
-
-Returns 402 if the user has no active subscription.
-
-### `POST /invites/menu`
-
-**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
-
-**Body:**
-```json
-{"telegram_user_id": 123456789}
-```
-
-Returns a permanent join-request invite for menu channel (`expires_at: null`).
-
-### `POST /payments/create`
-
-**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
-
-**Body:**
-```json
-{"telegram_user_id": 123456789, "product": "club", "plan": "3m"}
-```
-
-`product`:
-- `club` (requires `plan`)
-- `menu` (ignores `plan`, creates invoice for menu offer)
-
-For `product=club`, `plan` supports canonical values:
-- `1w`
-- `1m`
-- `3m`
-- `6m`
-- `12m`
-
-`1w` is a trial plan and can be purchased only once per user.
-If trial is already used, endpoint still returns HTTP 200 with:
-`ok=false`, `error_code="trial_already_used"`, and `detail`.
-
-Also accepted for BotHelp convenience: `1н`, `1нед`, `1`, `3`, `6`, `12`,
-plus Cyrillic variants like `3м` / `6мес`.
-
-### `POST /payments/check`
-
-**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
-
-**Body:**
-```json
-{"telegram_user_id": 123456789, "product": "menu"}
-```
-
-`product` defaults to `club` for backward compatibility.
-
-If paid, returns `paid="true"` + invite link; otherwise `paid="false"`.
-- `club` => time-limited invite (`expires_at` is set)
-- `menu` => permanent invite (`expires_at = null`)
-
-### `GET /admin/ping`
-
-**Headers:** `X-Admin-Token: <ADMIN_TOKEN>`
-
-Quick sanity check that admin auth is working.
-
----
-
-## Extending the system
-
-### Adding a new product (e.g. `recipes_lifetime`)
-
-1. Add a new env var (e.g. `LAVA_PRODUCT_KEY_RECIPES=recipes_lifetime`).
-2. In `app/api/routes/lava_webhook.py`, replace the single `product_key` lookup
-   with a mapping from Lava's product/offer ID → internal key.
-3. Add a new invite endpoint in `app/api/routes/invite.py`.
-4. The entitlement logic (`can_approve_join`) and DB schema are already product-agnostic.
-
-### Migrating off BotHelp
-
-When you build a Main Bot:
-1. Create a new bot module in `app/bots/main_bot/`.
-2. Register its webhook in `app/main.py`.
-3. Move the invite-link generation into the Main Bot flow instead of calling
-   `POST /invites/club` externally.
-
----
-
-## Railway deployment
-
-1. Create a Railway project and provision a Postgres database.
-2. Set all required environment variables (Railway provides `DATABASE_URL` automatically).
-3. Set `APP_PUBLIC_BASE_URL` to your Railway-assigned domain (e.g. `https://easy-steps.up.railway.app`).
-4. Deploy — the `Dockerfile` CMD runs `alembic upgrade head` before starting uvicorn.
-
-> **Note:** Railway injects `DATABASE_URL` as `postgres://...`. The app rewrites it
-> to `postgresql+asyncpg://...` automatically via the `normalise_db_url` validator.
+MIT
