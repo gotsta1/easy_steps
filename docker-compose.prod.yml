@@ -19,6 +19,8 @@ services:
       DATABASE_URL: postgresql://easysteps:${POSTGRES_PASSWORD}@db:5432/easysteps
     expose:
       - "8000"
+    volumes:
+      - /opt/easy_steps/credentials/google-service-account.json:/credentials/google-service-account.json:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
