@@ -100,6 +100,7 @@ class CreatePaymentRequest(BaseModel):
     product: str = CLUB_PRODUCT_KEY
     payment_method: str | None = None  # "SBP" / "CARD"
     currency: str = "RUB"  # "RUB" / "USD" / "EUR"
+    promo_code: str | None = None
     ref: str | None = None
     cuid: str | None = None
     first_name: str | None = None
@@ -217,6 +218,7 @@ async def create_payment(
             offer_id=offer_id,
             currency=currency,
             payment_method=method,
+            promo_code=body.promo_code or None,
         )
     except LavaAPIError as exc:
         logger.error("lava_create_invoice_failed error=%s", exc.detail)

@@ -55,6 +55,7 @@ async def create_invoice(
     offer_id: str,
     currency: str = "RUB",
     payment_method: str | None = None,
+    promo_code: str | None = None,
 ) -> InvoiceResult:
     """
     Create a one-time payment invoice via Lava API.
@@ -82,6 +83,9 @@ async def create_invoice(
             body["paymentProvider"] = provider
     elif currency in PROVIDER_FOR_CURRENCY:
         body["paymentProvider"] = PROVIDER_FOR_CURRENCY[currency]
+
+    if promo_code:
+        body["promoCode"] = promo_code
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(url, json=body, headers=headers)
