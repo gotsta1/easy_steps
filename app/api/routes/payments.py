@@ -123,6 +123,7 @@ class CreatePaymentResponse(BaseModel):
     invoice_id: str | None = None
     amount: float | None = None
     currency: str | None = None
+    amount_display: str | None = None
 
 
 @router.post("/create", response_model=CreatePaymentResponse)
@@ -273,12 +274,23 @@ async def create_payment(
     path_and_query = parsed.path.lstrip("/")
     if parsed.query:
         path_and_query += "?" + parsed.query
+    amount_display: str | None = None
+    if result.amount is not None and result.currency:
+        currency_symbols = {"RUB": "₽", "USD": "$", "EUR": "€"}
+        symbol = currency_symbols.get(result.currency, result.currency)
+        formatted = f"{result.amount:,.0f}".replace(",", " ")
+        if result.currency == "RUB":
+            amount_display = f"{formatted}{symbol}"
+        else:
+            amount_display = f"{symbol}{formatted}"
+
     return CreatePaymentResponse(
         payment_url=result.payment_url,
         payment_url_path=path_and_query,
         invoice_id=result.invoice_id,
         amount=result.amount,
         currency=result.currency,
+        amount_display=amount_display,
     )
 
 
