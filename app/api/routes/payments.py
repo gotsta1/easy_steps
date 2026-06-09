@@ -237,7 +237,9 @@ async def create_payment(
             promo_code=promo_code,
         )
     except LavaAPIError as exc:
-        if exc.status_code == 400 and "Promo code not found" in exc.detail:
+        if exc.status_code == 400 and (
+            "Promo code not found" in exc.detail or "Usage limit exceeded" in exc.detail
+        ):
             return CreatePaymentResponse(
                 ok=False,
                 error_code="invalid_promo_code",
