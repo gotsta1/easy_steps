@@ -7,6 +7,7 @@ POST /payments/check   — check if user paid for product, return invite link
 from __future__ import annotations
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
@@ -199,6 +200,18 @@ async def create_payment(
     # Generate a deterministic email for this user (Lava requires an email).
     email = f"tg_{body.telegram_user_id}@{settings.LAVA_BUYER_EMAIL_DOMAIN}"
 
+    promo_code: str | None = None
+    if body.promo_code:
+        normalized = body.promo_code.strip().upper()
+        if re.fullmatch(r"[A-Z0-9_\-]{3,36}", normalized):
+            promo_code = normalized
+        else:
+            return CreatePaymentResponse(
+                ok=False,
+                error_code="invalid_promo_code",
+                detail="Promo code not found.",
+            )
+
     try:
         currency = body.currency.upper()
         if currency not in VALID_CURRENCIES:
@@ -218,7 +231,7 @@ async def create_payment(
             offer_id=offer_id,
             currency=currency,
             payment_method=method,
-            promo_code=body.promo_code or None,
+            promo_code=promo_code,
         )
     except LavaAPIError as exc:
         logger.error("lava_create_invoice_failed error=%s", exc.detail)
