@@ -121,6 +121,8 @@ class CreatePaymentResponse(BaseModel):
     payment_url: str | None = None
     payment_url_path: str | None = None
     invoice_id: str | None = None
+    amount: float | None = None
+    currency: str | None = None
 
 
 @router.post("/create", response_model=CreatePaymentResponse)
@@ -275,6 +277,8 @@ async def create_payment(
         payment_url=result.payment_url,
         payment_url_path=path_and_query,
         invoice_id=result.invoice_id,
+        amount=result.amount,
+        currency=result.currency,
     )
 
 

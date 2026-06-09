@@ -21,6 +21,8 @@ class InvoiceResult:
     invoice_id: str
     payment_url: str
     status: str
+    amount: float | None = None
+    currency: str | None = None
 
 
 class LavaAPIError(Exception):
@@ -102,15 +104,22 @@ async def create_invoice(
     invoice_id = data.get("id", "")
     payment_url = data.get("paymentUrl", "")
     status = data.get("status", "unknown")
+    amount_total = data.get("amountTotal", {})
+    amount = amount_total.get("amount")
+    currency_out = amount_total.get("currency")
 
     logger.info(
-        "lava_invoice_created id=%s status=%s url_prefix=%s",
+        "lava_invoice_created id=%s status=%s amount=%s %s url_prefix=%s",
         invoice_id,
         status,
+        amount,
+        currency_out,
         payment_url[:60] if payment_url else "none",
     )
     return InvoiceResult(
         invoice_id=str(invoice_id),
         payment_url=payment_url,
         status=status,
+        amount=amount,
+        currency=currency_out,
     )
