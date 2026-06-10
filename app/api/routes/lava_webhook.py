@@ -181,7 +181,7 @@ async def lava_webhook_handler(
             from app.services.google_sheets import append_sale
 
             plan = pending.plan if pending else None
-            amount = payload.get("amount", PLAN_PRICE_RUB.get(plan, 0))
+            amount = (pending.amount_rub if pending and pending.amount_rub else None) or PLAN_PRICE_RUB.get(plan, 0)
             timestamp_str = payload.get("timestamp", "")
             from datetime import datetime as dt
 

@@ -261,6 +261,7 @@ async def create_payment(
         cuid=body.cuid or None,
         first_name=body.first_name or None,
         ref=body.ref or None,
+        amount_rub=result.amount if result.currency == "RUB" else None,
     )
 
     logger.info(
