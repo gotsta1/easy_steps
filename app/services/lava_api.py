@@ -35,7 +35,6 @@ class LavaAPIError(Exception):
 PROVIDER_FOR_METHOD: dict[str, str] = {
     "SBP": "PAY2ME",
     "PAYPAL": "PAYPAL",
-    "STRIPE": "STRIPE",
     "APPLE_PAY": "UNLIMIT",
 }
 
