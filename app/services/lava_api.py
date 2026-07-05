@@ -41,13 +41,13 @@ PROVIDER_FOR_METHOD: dict[str, str] = {
 
 CARD_PROVIDER_FOR_CURRENCY: dict[str, str] = {
     "RUB": "SMART_GLOCAL",
-    "USD": "STRIPE",
-    "EUR": "STRIPE",
+    "USD": "UNLIMIT",
+    "EUR": "UNLIMIT",
 }
 
 PROVIDER_FOR_CURRENCY: dict[str, str] = {
-    "USD": "STRIPE",
-    "EUR": "STRIPE",
+    "USD": "UNLIMIT",
+    "EUR": "UNLIMIT",
 }
 
 
