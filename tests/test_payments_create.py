@@ -75,6 +75,8 @@ def test_create_payment_trial_success_returns_payment_link(monkeypatch) -> None:
         invoice_id = "inv_123"
         payment_url = "https://app.lava.top/products/abc/offer_1w?foo=bar"
         status = "new"
+        amount = 329.0
+        currency = "RUB"
 
     async def fake_create_invoice(**kwargs):
         assert kwargs["offer_id"] == "offer_1w"

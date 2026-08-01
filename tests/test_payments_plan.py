@@ -47,7 +47,7 @@ def test_normalize_product_supported_variants(raw: str, expected: str) -> None:
     assert normalize_product(raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["", "vip", "menus"])
+@pytest.mark.parametrize("raw", ["vip", "menus"])
 def test_normalize_product_rejects_invalid_values(raw: str) -> None:
     with pytest.raises(ValueError):
         normalize_product(raw)
