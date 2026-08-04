@@ -55,6 +55,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             settings.KICK_GRACE_SECONDS,
         )
 
+    from app.services.gsheet_delivery import delivery_loop, is_gsheet_configured
+
+    if is_gsheet_configured(settings):
+        gsheet_task = asyncio.create_task(delivery_loop(settings))
+        app.state.gsheet_task = gsheet_task
+        logger.info(
+            "gsheet_delivery_job_started interval_s=%d batch_size=%d",
+            settings.GSHEET_RETRY_INTERVAL_SECONDS,
+            settings.GSHEET_RETRY_BATCH_SIZE,
+        )
+
     logger.info("app_startup_complete env=%s", settings.APP_ENV)
 
     yield
@@ -64,6 +75,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.kick_task.cancel()
         try:
             await app.state.kick_task
+        except asyncio.CancelledError:
+            pass
+
+    if hasattr(app.state, "gsheet_task"):
+        app.state.gsheet_task.cancel()
+        try:
+            await app.state.gsheet_task
         except asyncio.CancelledError:
             pass
 

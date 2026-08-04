@@ -149,6 +149,8 @@ class Settings(BaseSettings):
     GSHEET_CREDENTIALS_PATH: str = ""  # path to service account JSON
     GSHEET_SPREADSHEET_ID: str = ""    # spreadsheet ID from URL
     GSHEET_SHEET_NAME: str = "Лист1"   # worksheet name
+    GSHEET_RETRY_INTERVAL_SECONDS: int = 300
+    GSHEET_RETRY_BATCH_SIZE: int = 50
 
     # ── Admin ────────────────────────────────────────────────────────────────
     ADMIN_TOKEN: str

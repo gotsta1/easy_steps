@@ -272,12 +272,48 @@ class PendingInvoiceRepo:
         """Alias — Lava uses 'contractId' in webhooks, same as invoice ID."""
         return await self.get_by_lava_id(contract_id)
 
-    async def mark_paid(self, lava_invoice_id: str) -> PendingInvoice | None:
+    async def mark_paid(
+        self,
+        lava_invoice_id: str,
+        paid_at: datetime | None = None,
+    ) -> PendingInvoice | None:
         inv = await self.get_by_lava_id(lava_invoice_id)
         if inv:
             inv.paid = True
+            if paid_at is not None:
+                inv.paid_at = paid_at
             await self._db.flush()
         return inv
+
+    async def get_next_gsheet_pending(self) -> PendingInvoice | None:
+        """Lock and return one undelivered paid Tanya invoice."""
+        result = await self._db.execute(
+            select(PendingInvoice)
+            .where(
+                PendingInvoice.paid.is_(True),
+                PendingInvoice.ref == "tanya",
+                PendingInvoice.gsheet_recorded_at.is_(None),
+            )
+            .order_by(PendingInvoice.gsheet_attempts, PendingInvoice.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def mark_gsheet_recorded(self, invoice: PendingInvoice) -> None:
+        invoice.gsheet_recorded_at = utcnow()
+        invoice.gsheet_attempts += 1
+        invoice.gsheet_last_error = None
+        await self._db.flush()
+
+    async def mark_gsheet_failed(
+        self,
+        invoice: PendingInvoice,
+        error: str,
+    ) -> None:
+        invoice.gsheet_attempts += 1
+        invoice.gsheet_last_error = error[:2000]
+        await self._db.flush()
 
     async def has_paid_plan(
         self,

@@ -126,6 +126,18 @@ class PendingInvoice(Base):
     first_name: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     ref: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     amount_rub: Mapped[float | None] = mapped_column(sa.Float, nullable=True, default=None)
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    gsheet_recorded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    gsheet_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    gsheet_last_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=sa.text("now()"),
