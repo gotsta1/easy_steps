@@ -149,6 +149,14 @@ async def _load_sync_candidates(
         (active_condition, ACTIVE),
         else_=EXPIRED,
     )
+    priority = sa.case(
+        # A previously synchronized user changed state: never let an initial
+        # backfill delay this live transition.
+        (User.bothelp_subscription_status.isnot(None), 0),
+        (active_condition, 1),
+        (Entitlement.id.isnot(None), 2),
+        else_=3,
+    )
     result = await db.execute(
         select(User, Entitlement, desired_status.label("desired_status"))
         .outerjoin(
@@ -162,16 +170,16 @@ async def _load_sync_candidates(
             User.bothelp_subscriber_id.isnot(None),
             User.bothelp_subscription_status.is_distinct_from(desired_status),
         )
-        .order_by(User.id)
+        .order_by(priority, User.id)
         .limit(limit)
     )
     return [(row[0], row[1], row[2]) for row in result.all()]
 
 
-async def run_status_sync_batch(settings: Settings) -> int:
-    """Process one retry/backfill batch and return successful sync count."""
+async def run_status_sync_batch(settings: Settings) -> tuple[int, int]:
+    """Process one retry/backfill batch; return (successes, candidates)."""
     if not is_bothelp_status_sync_configured(settings):
-        return 0
+        return 0, 0
 
     client = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
     synced = 0
@@ -188,14 +196,19 @@ async def run_status_sync_batch(settings: Settings) -> int:
 
     if synced:
         logger.info("bothelp_status_sync_batch_complete synced=%d", synced)
-    return synced
+    return synced, len(candidates)
 
 
 async def status_sync_loop(settings: Settings) -> None:
     """Continuously reconcile BotHelp fields with the database."""
     while True:
         try:
-            await run_status_sync_batch(settings)
+            _synced, candidate_count = await run_status_sync_batch(settings)
         except Exception:
             logger.exception("bothelp_status_sync_job_error")
-        await asyncio.sleep(settings.BOTHELP_STATUS_SYNC_INTERVAL_SECONDS)
+            candidate_count = 0
+
+        interval = settings.BOTHELP_STATUS_SYNC_INTERVAL_SECONDS
+        if candidate_count >= settings.BOTHELP_STATUS_SYNC_BATCH_SIZE:
+            interval = settings.BOTHELP_STATUS_SYNC_BACKLOG_INTERVAL_SECONDS
+        await asyncio.sleep(interval)
