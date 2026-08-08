@@ -218,11 +218,8 @@ async def _run_notify_job(settings: Settings) -> None:
     from app.services.bothelp_api import BotHelpClient, BotHelpAPIError
 
     steps_map = settings.notify_steps_map
-    hours_map = settings.notify_hours_map
     post_expiry_hours_map = settings.notify_post_expiry_hours_map
-    if (
-        not steps_map and not hours_map and not post_expiry_hours_map
-    ) or not settings.BOTHELP_CLIENT_ID:
+    if (not steps_map and not post_expiry_hours_map) or not settings.BOTHELP_CLIENT_ID:
         return  # notifications not configured
 
     bothelp = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
@@ -232,7 +229,7 @@ async def _run_notify_job(settings: Settings) -> None:
     async with AsyncSessionFactory() as db:
         ent_repo = EntitlementRepo(db)
 
-        # Process thresholds from largest to smallest (3, 2, 1).
+        # Process thresholds from largest to smallest (3, 2 days).
         for days in sorted(steps_map.keys(), reverse=True):
             step_referral = steps_map[days]
             expiring = await ent_repo.get_expiring_soon(now, days)
@@ -260,35 +257,7 @@ async def _run_notify_job(settings: Settings) -> None:
                         days,
                     )
 
-        # Process hour-based thresholds (3h reminder for all plans).
-        for hours in sorted(hours_map.keys(), reverse=True):
-            step_referral = hours_map[hours]
-            expiring = await ent_repo.get_expiring_within_hours(now, hours)
-
-            for ent in expiring:
-                if not _should_send_hour_notification(ent.duration_days, hours):
-                    continue
-                result = await db.execute(select(User).where(User.id == ent.user_id))
-                user: User | None = result.scalar_one_or_none()
-                if not user or not user.bothelp_subscriber_id:
-                    continue
-                try:
-                    await bothelp.trigger_bot_step(
-                        bothelp_subscriber_id=user.bothelp_subscriber_id,
-                        bot_referral=settings.BOTHELP_BOT_REFERRAL,
-                        step_referral=step_referral,
-                    )
-                    ent.expiry_notified_3h_at = now
-                    total_sent += 1
-                except BotHelpAPIError:
-                    logger.warning(
-                        "notify_failed tg_id=%d bothelp_id=%d hours=%d",
-                        user.telegram_user_id,
-                        user.bothelp_subscriber_id,
-                        hours,
-                    )
-
-        # Process post-expiry thresholds (for example, 10 hours after expiry).
+        # Process post-expiry thresholds (10 and 72 hours after expiry).
         for hours in sorted(post_expiry_hours_map.keys(), reverse=True):
             step_referral = post_expiry_hours_map[hours]
             expired = await ent_repo.get_expired_since_hours(now, hours)
@@ -323,26 +292,15 @@ async def _run_notify_job(settings: Settings) -> None:
 
 
 def _should_send_expiry_notification(duration_days: int | None, days_before: int) -> bool:
-    """
-    Notification policy: all plans get 3/2/1 day notifications.
-    """
-    if duration_days in {7, 30, 90, 180, 365} or duration_days is None:
-        return days_before in {1, 2, 3}
-    return days_before in {1, 2, 3}
-
-
-def _should_send_hour_notification(duration_days: int | None, hours_before: int) -> bool:
-    """Hour-level notification policy: all plans get a 3-hour reminder."""
-    if hours_before == 3:
-        return duration_days in {7, 30, 90, 180, 365} or duration_days is None
-    return False
+    """Notification policy: all plans get 3-day and 2-day reminders."""
+    return days_before in {2, 3}
 
 
 def _should_send_post_expiry_notification(
     duration_days: int | None, hours_after: int
 ) -> bool:
-    """Post-expiry policy: send at all configured thresholds for all plans."""
-    return hours_after in {10, 72, 168, 240, 360, 480, 600, 720, 840}
+    """Post-expiry policy: send after 10 hours and 3 days for all plans."""
+    return hours_after in {10, 72}
 
 
 async def _run_kick_job(settings: Settings) -> None:
