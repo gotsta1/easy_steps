@@ -66,6 +66,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             settings.GSHEET_RETRY_BATCH_SIZE,
         )
 
+    from app.services.bothelp_status_sync import (
+        is_bothelp_status_sync_configured,
+        status_sync_loop,
+    )
+
+    if is_bothelp_status_sync_configured(settings):
+        status_sync_task = asyncio.create_task(status_sync_loop(settings))
+        app.state.bothelp_status_sync_task = status_sync_task
+        logger.info(
+            "bothelp_status_sync_job_started interval_s=%d batch_size=%d",
+            settings.BOTHELP_STATUS_SYNC_INTERVAL_SECONDS,
+            settings.BOTHELP_STATUS_SYNC_BATCH_SIZE,
+        )
+
     logger.info("app_startup_complete env=%s", settings.APP_ENV)
 
     yield
@@ -82,6 +96,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.gsheet_task.cancel()
         try:
             await app.state.gsheet_task
+        except asyncio.CancelledError:
+            pass
+
+    if hasattr(app.state, "bothelp_status_sync_task"):
+        app.state.bothelp_status_sync_task.cancel()
+        try:
+            await app.state.bothelp_status_sync_task
         except asyncio.CancelledError:
             pass
 

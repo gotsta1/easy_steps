@@ -26,6 +26,7 @@ def test_no_purchases() -> None:
 
     assert response.club == "0"
     assert response.menu == "False"
+    assert response.subscription_status == "never_paid"
 
 
 def test_club_days_are_rounded_up() -> None:
@@ -38,6 +39,7 @@ def test_club_days_are_rounded_up() -> None:
 
     assert response.club == "3"
     assert response.menu == "False"
+    assert response.subscription_status == "active"
 
 
 def test_club_with_less_than_one_day_returns_one() -> None:
@@ -66,6 +68,14 @@ def test_expired_or_inactive_club_returns_zero() -> None:
 
     assert build_subscription_status(expired, None, now=NOW).club == "0"
     assert build_subscription_status(inactive, None, now=NOW).club == "0"
+    assert (
+        build_subscription_status(expired, None, now=NOW).subscription_status
+        == "expired"
+    )
+    assert (
+        build_subscription_status(inactive, None, now=NOW).subscription_status
+        == "expired"
+    )
 
 
 def test_active_lifetime_menu_returns_true() -> None:

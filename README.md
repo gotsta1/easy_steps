@@ -160,6 +160,8 @@ Required:
 - `LAVA_OFFER_CLUB_*` — offer IDs for each subscription plan
 - `DATABASE_URL` — PostgreSQL connection string
 - `APP_PUBLIC_BASE_URL` — public HTTPS URL for webhook registration
+- `BOTHELP_STEP_SUBSCRIPTION_SYNC` — technical BotHelp step that refreshes
+  the `club_subscription_status` subscriber field
 
 ---
 
@@ -174,6 +176,7 @@ Required:
 | POST | `/lava/webhook` | Receive Lava payment events |
 | POST | `/tg/access/webhook` | Receive Telegram bot updates |
 | POST | `/bothelp/webhook` | Receive BotHelp subscriber events |
+| POST | `/subscriptions/status` | Return club/menu and three-state subscription status |
 | POST | `/invites/club` | Generate club invite link (admin) |
 
 ---

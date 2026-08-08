@@ -12,18 +12,20 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Request
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
 
+from app.core.config import Settings, get_settings
 from app.db.repo import UserRepo
 from app.db.session import get_db
+from app.services.bothelp_status_sync import sync_telegram_user_status
 
 logger = logging.getLogger(__name__)
 
 
 async def bothelp_webhook_handler(
     request: Request,
+    settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     payload: dict = await request.json()
@@ -53,8 +55,14 @@ async def bothelp_webhook_handler(
 
     user_repo = UserRepo(db)
     user, created = await user_repo.get_or_create(telegram_user_id)
+    if user.bothelp_subscriber_id != bothelp_subscriber_id:
+        # A remapped subscriber needs a fresh status even if the old BotHelp
+        # profile had already been synchronized.
+        user.bothelp_subscription_status = None
     user.bothelp_subscriber_id = bothelp_subscriber_id
     await db.commit()
+
+    await sync_telegram_user_status(db, settings, telegram_user_id)
 
     logger.info(
         "bothelp_subscriber_saved tg_id=%d bothelp_id=%d created=%s",

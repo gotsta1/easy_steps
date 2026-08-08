@@ -36,6 +36,20 @@ class User(Base):
     bothelp_subscriber_id: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    # Last subscription status whose BotHelp sync step was accepted.
+    # NULL means the subscriber still needs an initial sync.
+    bothelp_subscription_status: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    bothelp_status_sync_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    bothelp_status_sync_last_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    bothelp_status_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=sa.text("now()"),

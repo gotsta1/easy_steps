@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 
 from app.api.deps import get_entitlement_service, require_admin_token
 from app.db.models import Entitlement, EntitlementStatus
+from app.services.bothelp_status_sync import subscription_status_for_entitlement
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
     MENU_PRODUCT_KEY,
@@ -36,6 +37,7 @@ class SubscriptionStatusRequest(BaseModel):
 class SubscriptionStatusResponse(BaseModel):
     club: str
     menu: str
+    subscription_status: str
 
 
 def _normalized_expiry(entitlement: Entitlement | None) -> datetime | None:
@@ -80,7 +82,11 @@ def build_subscription_status(
         and (menu_expiry is None or menu_expiry > now)
     )
 
-    return SubscriptionStatusResponse(club=club_value, menu=str(has_menu))
+    return SubscriptionStatusResponse(
+        club=club_value,
+        menu=str(has_menu),
+        subscription_status=subscription_status_for_entitlement(club_entitlement, now),
+    )
 
 
 @router.post("/status", response_model=SubscriptionStatusResponse)

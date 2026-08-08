@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
     BOTHELP_STEP_NOTIFY_EXPIRED_10H: str = ""
     BOTHELP_STEP_NOTIFY_EXPIRED_3D: str = ""
+    BOTHELP_STEP_SUBSCRIPTION_SYNC: str = ""
+    BOTHELP_STATUS_SYNC_INTERVAL_SECONDS: int = 900
+    BOTHELP_STATUS_SYNC_BATCH_SIZE: int = 50
     BOTHELP_WEBHOOK_PATH: str = "/bothelp/webhook"
 
     # ── Lava.top ─────────────────────────────────────────────────────────────

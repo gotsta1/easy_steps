@@ -27,6 +27,7 @@ from app.core.security import verify_lava_basic_auth
 from app.db.repo import LavaEventRepo, PendingInvoiceRepo
 from app.db.session import get_db
 from app.services import lava as lava_svc
+from app.services.bothelp_status_sync import sync_telegram_user_status
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
     MENU_PRODUCT_KEY,
@@ -163,6 +164,8 @@ async def lava_webhook_handler(
         offer_id = lava_svc.extract_offer_id(payload)
     offer_details = _resolve_offer(settings, offer_id)
 
+    should_sync_status = False
+
     if action == "payment_success":
         if offer_details is None:
             logger.warning(
@@ -180,6 +183,7 @@ async def lava_webhook_handler(
             await ent_service.apply_payment_success(
                 telegram_user_id, duration_days, product_key
             )
+        should_sync_status = product_key == CLUB_PRODUCT_KEY
 
         # Try immediately. A failure is persisted and retried by the worker.
         if pending and pending.ref == "tanya":
@@ -198,5 +202,12 @@ async def lava_webhook_handler(
     elif action == "canceled":
         product_key = offer_details[0] if offer_details is not None else CLUB_PRODUCT_KEY
         await ent_service.apply_canceled(telegram_user_id, product_key)
+        should_sync_status = product_key == CLUB_PRODUCT_KEY
+
+    if should_sync_status:
+        # BotHelp's technical step immediately calls /subscriptions/status.
+        # Commit first so that request cannot observe the previous entitlement.
+        await db.commit()
+        await sync_telegram_user_status(db, settings, telegram_user_id)
 
     return {"status": "ok"}
