@@ -80,6 +80,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             settings.BOTHELP_STATUS_SYNC_BATCH_SIZE,
         )
 
+    from app.services.bothelp_review_mailing import (
+        is_review_mailing_configured,
+        review_mailing_loop,
+    )
+
+    if is_review_mailing_configured(settings):
+        review_mailing_task = asyncio.create_task(review_mailing_loop(settings))
+        app.state.review_mailing_task = review_mailing_task
+        logger.info(
+            "review_mailing_job_started delay_h=%d interval_s=%d batch_size=%d",
+            settings.BOTHELP_REVIEW_DELAY_HOURS,
+            settings.BOTHELP_REVIEW_INTERVAL_SECONDS,
+            settings.BOTHELP_REVIEW_BATCH_SIZE,
+        )
+
     logger.info("app_startup_complete env=%s", settings.APP_ENV)
 
     yield
@@ -103,6 +118,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.bothelp_status_sync_task.cancel()
         try:
             await app.state.bothelp_status_sync_task
+        except asyncio.CancelledError:
+            pass
+
+    if hasattr(app.state, "review_mailing_task"):
+        app.state.review_mailing_task.cancel()
+        try:
+            await app.state.review_mailing_task
         except asyncio.CancelledError:
             pass
 

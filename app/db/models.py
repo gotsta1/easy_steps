@@ -102,6 +102,16 @@ class Entitlement(Base):
     last_post_expiry_hours: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    # Durable delivery state for enrolling the user into the review mailing.
+    review_mailing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    review_mailing_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    review_mailing_last_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=sa.text("now()"),

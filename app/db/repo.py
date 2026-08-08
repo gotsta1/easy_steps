@@ -102,6 +102,9 @@ class EntitlementRepo:
                     ent.expiry_notified_days = None  # reset notifications on renewal
                     ent.expiry_notified_3h_at = None
                     ent.last_post_expiry_hours = None
+                    ent.review_mailing_started_at = None
+                    ent.review_mailing_attempts = 0
+                    ent.review_mailing_last_error = None
                 ent.active_until = active_until
             if duration_days is not None:
                 ent.duration_days = duration_days
@@ -194,6 +197,28 @@ class EntitlementRepo:
             )
         )
         return list(result.scalars().all())
+
+    async def get_pending_review_mailing(
+        self,
+        cutoff: datetime,
+        limit: int,
+    ) -> list[tuple[Entitlement, User]]:
+        """Return club users eligible for the review mailing enrollment."""
+        result = await self._db.execute(
+            select(Entitlement, User)
+            .join(User, User.id == Entitlement.user_id)
+            .where(
+                Entitlement.product_key == "club",
+                Entitlement.active_until.isnot(None),
+                Entitlement.active_until <= cutoff,
+                Entitlement.review_mailing_started_at.is_(None),
+                User.bothelp_subscriber_id.isnot(None),
+            )
+            .order_by(Entitlement.active_until, Entitlement.id)
+            .limit(limit)
+            .with_for_update(of=Entitlement, skip_locked=True)
+        )
+        return [(row[0], row[1]) for row in result.all()]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

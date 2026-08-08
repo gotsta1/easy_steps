@@ -162,6 +162,8 @@ Required:
 - `APP_PUBLIC_BASE_URL` — public HTTPS URL for webhook registration
 - `BOTHELP_STEP_SUBSCRIPTION_SYNC` — technical BotHelp step that refreshes
   the `club_subscription_status` subscriber field
+- `BOTHELP_STEP_REVIEW_MAILING` — technical BotHelp step that enrolls club
+  users into the review mailing 120 hours after their access expires
 
 ---
 

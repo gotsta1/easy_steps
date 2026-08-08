@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     BOTHELP_STATUS_SYNC_INTERVAL_SECONDS: int = 900
     BOTHELP_STATUS_SYNC_BACKLOG_INTERVAL_SECONDS: int = 60
     BOTHELP_STATUS_SYNC_BATCH_SIZE: int = 50
+    BOTHELP_STEP_REVIEW_MAILING: str = ""
+    BOTHELP_REVIEW_DELAY_HOURS: int = 120
+    BOTHELP_REVIEW_INTERVAL_SECONDS: int = 900
+    BOTHELP_REVIEW_BACKLOG_INTERVAL_SECONDS: int = 60
+    BOTHELP_REVIEW_BATCH_SIZE: int = 50
     BOTHELP_WEBHOOK_PATH: str = "/bothelp/webhook"
 
     # ── Lava.top ─────────────────────────────────────────────────────────────
