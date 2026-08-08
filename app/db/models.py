@@ -106,6 +106,13 @@ class Entitlement(Base):
     review_mailing_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Last state successfully applied in BotHelp: "enrolled" or "stopped".
+    review_mailing_state: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+    review_mailing_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     review_mailing_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

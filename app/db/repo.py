@@ -102,9 +102,6 @@ class EntitlementRepo:
                     ent.expiry_notified_days = None  # reset notifications on renewal
                     ent.expiry_notified_3h_at = None
                     ent.last_post_expiry_hours = None
-                    ent.review_mailing_started_at = None
-                    ent.review_mailing_attempts = 0
-                    ent.review_mailing_last_error = None
                 ent.active_until = active_until
             if duration_days is not None:
                 ent.duration_days = duration_days
@@ -198,7 +195,32 @@ class EntitlementRepo:
         )
         return list(result.scalars().all())
 
-    async def get_pending_review_mailing(
+    async def get_pending_review_mailing_stops(
+        self,
+        now: datetime,
+        limit: int,
+    ) -> list[tuple[Entitlement, User]]:
+        """Return active club users that must be removed from the mailing."""
+        result = await self._db.execute(
+            select(Entitlement, User)
+            .join(User, User.id == Entitlement.user_id)
+            .where(
+                Entitlement.product_key == "club",
+                Entitlement.status == EntitlementStatus.active,
+                sa.or_(
+                    Entitlement.active_until.is_(None),
+                    Entitlement.active_until > now,
+                ),
+                Entitlement.review_mailing_state.is_distinct_from("stopped"),
+                User.bothelp_subscriber_id.isnot(None),
+            )
+            .order_by(Entitlement.updated_at.desc(), Entitlement.id)
+            .limit(limit)
+            .with_for_update(of=Entitlement, skip_locked=True)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def get_pending_review_mailing_enrollments(
         self,
         cutoff: datetime,
         limit: int,
@@ -211,7 +233,7 @@ class EntitlementRepo:
                 Entitlement.product_key == "club",
                 Entitlement.active_until.isnot(None),
                 Entitlement.active_until <= cutoff,
-                Entitlement.review_mailing_started_at.is_(None),
+                Entitlement.review_mailing_state.is_distinct_from("enrolled"),
                 User.bothelp_subscriber_id.isnot(None),
             )
             .order_by(Entitlement.active_until, Entitlement.id)

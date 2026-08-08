@@ -28,6 +28,7 @@ from app.db.repo import LavaEventRepo, PendingInvoiceRepo
 from app.db.session import get_db
 from app.services import lava as lava_svc
 from app.services.bothelp_status_sync import sync_telegram_user_status
+from app.services.bothelp_review_mailing import sync_review_mailing_for_telegram_user
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
     MENU_PRODUCT_KEY,
@@ -209,5 +210,9 @@ async def lava_webhook_handler(
         # Commit first so that request cannot observe the previous entitlement.
         await db.commit()
         await sync_telegram_user_status(db, settings, telegram_user_id)
+        if action == "payment_success":
+            await sync_review_mailing_for_telegram_user(
+                db, settings, telegram_user_id
+            )
 
     return {"status": "ok"}
