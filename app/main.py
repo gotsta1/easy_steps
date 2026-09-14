@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import timedelta
-from typing import AsyncGenerator
+from datetime import datetime, timedelta
+from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -351,7 +351,7 @@ async def _run_kick_job(settings: Settings) -> None:
 
     from app.bots.access_bot.bot import get_bot
     from app.core.time import utcnow
-    from app.db.models import EntitlementStatus, User
+    from app.db.models import User
     from app.db.repo import EntitlementRepo
     from app.db.session import AsyncSessionFactory
     from app.services.telegram_access import TelegramAccessService
@@ -368,18 +368,34 @@ async def _run_kick_job(settings: Settings) -> None:
 
         bot = get_bot()
         tg_svc = TelegramAccessService(bot, settings.TG_CHANNEL_ID)
+        kicked_count = 0
 
         for ent in expired:
             result = await db.execute(select(User).where(User.id == ent.user_id))
             user: User | None = result.scalar_one_or_none()
             if not user:
                 continue
-            await tg_svc.kick_and_unban(user.telegram_user_id)
-            ent.status = EntitlementStatus.inactive
+            if not await tg_svc.kick_and_unban(user.telegram_user_id):
+                continue
+            _mark_entitlement_kicked(ent, now)
+            kicked_count += 1
 
         await db.commit()
 
-    logger.info("kick_job_complete kicked=%d", len(expired))
+    logger.info(
+        "kick_job_complete candidates=%d kicked=%d",
+        len(expired),
+        kicked_count,
+    )
+
+
+def _mark_entitlement_kicked(entitlement: Any, kicked_at: datetime) -> None:
+    """Persist a successful Telegram removal on the entitlement."""
+    from app.db.models import EntitlementStatus
+
+    entitlement.status = EntitlementStatus.inactive
+    entitlement.kicked_at = kicked_at
+    entitlement.updated_at = kicked_at
 
 
 # ─────────────────────────────────────────────────────────────────────────────

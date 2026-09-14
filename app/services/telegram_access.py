@@ -26,7 +26,7 @@ class TelegramAccessService:
         )
         logger.info("join_declined telegram_id=%d", telegram_user_id)
 
-    async def kick_and_unban(self, telegram_user_id: int) -> None:
+    async def kick_and_unban(self, telegram_user_id: int) -> bool:
         """
         Remove a user from the channel by banning then immediately unbanning.
 
@@ -43,7 +43,9 @@ class TelegramAccessService:
                 only_if_banned=True,
             )
             logger.info("user_kicked telegram_id=%d", telegram_user_id)
+            return True
         except Exception as exc:
             logger.warning(
                 "kick_failed telegram_id=%d error=%s", telegram_user_id, exc
             )
+            return False

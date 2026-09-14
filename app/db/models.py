@@ -84,6 +84,11 @@ class Entitlement(Base):
     active_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Actual Telegram removal time for the current expired access cycle.
+    # Reset to NULL when access becomes active again.
+    kicked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     # Original plan duration in days (7, 30, 90, etc.). NULL = lifetime.
     duration_days: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
