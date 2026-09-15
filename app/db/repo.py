@@ -99,6 +99,7 @@ class EntitlementRepo:
             ent.updated_at = now
             if status == EntitlementStatus.active:
                 ent.kicked_at = None
+                ent.retention_next_message_at = None
             if active_until is not None:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal
@@ -200,7 +201,7 @@ class EntitlementRepo:
         self,
         first_send_cutoff: datetime,
         historical_first_send_cutoff: datetime,
-        repeat_cutoff: datetime,
+        now: datetime,
         limit: int,
     ) -> list[tuple[Entitlement, User]]:
         """Return current and historical club users due for retention."""
@@ -221,12 +222,17 @@ class EntitlementRepo:
                 sa.or_(
                     Entitlement.retention_message_sent_at.is_(None),
                     Entitlement.retention_message_sent_at < Entitlement.kicked_at,
-                    Entitlement.retention_message_sent_at <= repeat_cutoff,
+                    Entitlement.retention_next_message_at.is_(None),
+                    Entitlement.retention_next_message_at <= now,
                 ),
                 User.bothelp_subscriber_id.isnot(None),
             )
             .order_by(
-                sa.func.coalesce(Entitlement.kicked_at, Entitlement.active_until),
+                sa.func.coalesce(
+                    Entitlement.retention_next_message_at,
+                    Entitlement.kicked_at,
+                    Entitlement.active_until,
+                ),
                 Entitlement.id,
             )
             .limit(limit)

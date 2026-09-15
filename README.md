@@ -169,8 +169,8 @@ Required:
 - `BOTHELP_STEP_RETENTION_OFFER` — discounted retention message starting 168
   hours after the user's successful Telegram kick
 - `BOTHELP_STEP_RETENTION_USED` — regular retention message for users who have
-  already redeemed the discount; both retention messages repeat every 72 hours
-  while club access remains inactive
+  already redeemed the discount; repeats are randomly scheduled 2–4 calendar
+  days later between 06:00 and 24:00 Moscow time while access remains inactive
 
 ---
 

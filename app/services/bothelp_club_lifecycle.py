@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+import random
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import select
@@ -19,6 +21,7 @@ from app.services.bothelp_api import BotHelpAPIError, BotHelpClient
 logger = logging.getLogger(__name__)
 
 STOPPED = "stopped"
+MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 
 def _has_bothelp_credentials(settings: Settings) -> bool:
@@ -46,14 +49,10 @@ def is_active_club(entitlement: Entitlement, now: datetime) -> bool:
     )
 
 
-def retention_message_is_due(
+def _retention_anchor(
     entitlement: Entitlement,
-    now: datetime,
-    delay_hours: int,
-    repeat_hours: int,
     kick_grace_seconds: int = 0,
-) -> bool:
-    """Return whether the first or a repeated retention message is due."""
+) -> datetime | None:
     retention_anchor = entitlement.kicked_at
     if retention_anchor is None and entitlement.active_until is not None:
         # Old records predate kick tracking. Keep kicked_at unknown, but use the
@@ -61,6 +60,57 @@ def retention_message_is_due(
         retention_anchor = entitlement.active_until + timedelta(
             seconds=kick_grace_seconds
         )
+    return retention_anchor
+
+
+def random_retention_send_at(
+    base: datetime,
+    min_days: int,
+    max_days: int,
+    start_hour_msk: int,
+    end_hour_msk: int,
+    rng: random.Random | None = None,
+) -> datetime:
+    """Choose and return a persisted random Moscow delivery time in UTC."""
+    if min_days < 1 or max_days < min_days:
+        raise ValueError("Invalid retention repeat day range")
+    if not 0 <= start_hour_msk < end_hour_msk <= 24:
+        raise ValueError("Invalid retention delivery hour range")
+
+    source = rng or random.SystemRandom()
+    local_base = base.astimezone(MOSCOW_TZ)
+    target_date = local_base.date() + timedelta(
+        days=source.randint(min_days, max_days)
+    )
+    window_start = datetime.combine(
+        target_date,
+        time(hour=start_hour_msk),
+        tzinfo=MOSCOW_TZ,
+    )
+    if end_hour_msk == 24:
+        window_end = datetime.combine(
+            target_date + timedelta(days=1),
+            time.min,
+            tzinfo=MOSCOW_TZ,
+        )
+    else:
+        window_end = datetime.combine(
+            target_date,
+            time(hour=end_hour_msk),
+            tzinfo=MOSCOW_TZ,
+        )
+    offset_seconds = source.randrange(int((window_end - window_start).total_seconds()))
+    return (window_start + timedelta(seconds=offset_seconds)).astimezone(timezone.utc)
+
+
+def retention_message_is_due(
+    entitlement: Entitlement,
+    now: datetime,
+    delay_hours: int,
+    kick_grace_seconds: int = 0,
+) -> bool:
+    """Return whether an initial or already scheduled retention message is due."""
+    retention_anchor = _retention_anchor(entitlement, kick_grace_seconds)
     if (
         is_active_club(entitlement, now)
         or retention_anchor is None
@@ -69,10 +119,30 @@ def retention_message_is_due(
         return False
 
     last_sent_at = entitlement.retention_message_sent_at
+    if last_sent_at is None or last_sent_at < retention_anchor:
+        return True
     return bool(
-        last_sent_at is None
-        or last_sent_at < retention_anchor
-        or last_sent_at <= now - timedelta(hours=repeat_hours)
+        entitlement.retention_next_message_at is not None
+        and entitlement.retention_next_message_at <= now
+    )
+
+
+def _retention_repeat_needs_scheduling(
+    entitlement: Entitlement,
+    now: datetime,
+    delay_hours: int,
+    kick_grace_seconds: int,
+) -> bool:
+    """Return whether a sent retention cycle needs its first persisted schedule."""
+    retention_anchor = _retention_anchor(entitlement, kick_grace_seconds)
+    last_sent_at = entitlement.retention_message_sent_at
+    return bool(
+        not is_active_club(entitlement, now)
+        and retention_anchor is not None
+        and retention_anchor <= now - timedelta(hours=delay_hours)
+        and last_sent_at is not None
+        and last_sent_at >= retention_anchor
+        and entitlement.retention_next_message_at is None
     )
 
 
@@ -134,11 +204,41 @@ async def _trigger_retention_message(
     user: User,
 ) -> bool:
     """Trigger the appropriate retention message and mark confirmed delivery."""
+    now = utcnow()
+    if _retention_repeat_needs_scheduling(
+        entitlement,
+        now,
+        settings.BOTHELP_RETENTION_DELAY_HOURS,
+        settings.KICK_GRACE_SECONDS,
+    ):
+        last_sent_at = entitlement.retention_message_sent_at
+        assert last_sent_at is not None
+        schedule_base = (
+            last_sent_at
+            if last_sent_at > now - timedelta(
+                days=settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS
+            )
+            else now
+        )
+        entitlement.retention_next_message_at = random_retention_send_at(
+            schedule_base,
+            settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
+            settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
+            settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
+            settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
+        )
+        await db.flush()
+        logger.info(
+            "retention_message_scheduled tg_id=%d next_at=%s",
+            user.telegram_user_id,
+            entitlement.retention_next_message_at.isoformat(),
+        )
+        return False
+
     if not retention_message_is_due(
         entitlement,
-        utcnow(),
+        now,
         settings.BOTHELP_RETENTION_DELAY_HOURS,
-        settings.BOTHELP_RETENTION_REPEAT_HOURS,
         settings.KICK_GRACE_SECONDS,
     ):
         return False
@@ -166,13 +266,22 @@ async def _trigger_retention_message(
         )
         return False
 
-    entitlement.retention_message_sent_at = utcnow()
+    sent_at = utcnow()
+    entitlement.retention_message_sent_at = sent_at
+    entitlement.retention_next_message_at = random_retention_send_at(
+        sent_at,
+        settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
+        settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
+        settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
+        settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
+    )
     await db.flush()
     logger.info(
-        "retention_message_sent tg_id=%d bothelp_id=%d offer_available=%s",
+        "retention_message_sent tg_id=%d bothelp_id=%d offer_available=%s next_at=%s",
         user.telegram_user_id,
         user.bothelp_subscriber_id,
         offer_available,
+        entitlement.retention_next_message_at.isoformat(),
     )
     return True
 
@@ -222,7 +331,6 @@ async def run_club_lifecycle_batch(settings: Settings) -> tuple[int, int]:
     historical_first_send_cutoff = first_send_cutoff - timedelta(
         seconds=settings.KICK_GRACE_SECONDS
     )
-    repeat_cutoff = now - timedelta(hours=settings.BOTHELP_RETENTION_REPEAT_HOURS)
     client = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
     synced = 0
 
@@ -245,7 +353,7 @@ async def run_club_lifecycle_batch(settings: Settings) -> tuple[int, int]:
             retention_candidates = await repo.get_pending_retention_messages(
                 first_send_cutoff,
                 historical_first_send_cutoff,
-                repeat_cutoff,
+                now,
                 remaining,
             )
 

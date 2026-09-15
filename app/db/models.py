@@ -93,6 +93,10 @@ class Entitlement(Base):
     retention_message_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Persisted randomized delivery time for the next retention message.
+    retention_next_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     retention_offers: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

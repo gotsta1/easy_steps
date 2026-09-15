@@ -89,10 +89,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         club_lifecycle_task = asyncio.create_task(club_lifecycle_loop(settings))
         app.state.club_lifecycle_task = club_lifecycle_task
         logger.info(
-            "club_lifecycle_job_started retention_delay_h=%d repeat_h=%d "
-            "interval_s=%d batch_size=%d",
+            "club_lifecycle_job_started retention_delay_h=%d repeat_days=%d-%d "
+            "send_hours_msk=%d-%d interval_s=%d batch_size=%d",
             settings.BOTHELP_RETENTION_DELAY_HOURS,
-            settings.BOTHELP_RETENTION_REPEAT_HOURS,
+            settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
+            settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
+            settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
+            settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
             settings.BOTHELP_REVIEW_INTERVAL_SECONDS,
             settings.BOTHELP_REVIEW_BATCH_SIZE,
         )
@@ -397,6 +400,7 @@ def _mark_entitlement_kicked(entitlement: Any, kicked_at: datetime) -> None:
 
     entitlement.status = EntitlementStatus.inactive
     entitlement.kicked_at = kicked_at
+    entitlement.retention_next_message_at = None
     entitlement.review_mailing_state = None
     entitlement.review_mailing_synced_at = None
     entitlement.updated_at = kicked_at

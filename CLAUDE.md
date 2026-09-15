@@ -253,10 +253,12 @@ subscriber ID.
 
 The club-lifecycle worker gives active-user mailing cleanup priority. Seven days (168
 hours) after an actual successful Telegram kick, it starts retention messages while club
-access remains inactive. Messages repeat every 72 hours. Users with `retention_offers=0`
+access remains inactive. Repeats are persisted at a random time 2–4 calendar days later,
+between 06:00 and 24:00 Moscow time. Users with `retention_offers=0`
 receive `BOTHELP_STEP_RETENTION_OFFER`; users with `retention_offers=1` receive
-`BOTHELP_STEP_RETENTION_USED`. `retention_message_sent_at` controls the repeat interval,
-and an older timestamp does not suppress the first message after a later kick.
+`BOTHELP_STEP_RETENTION_USED`. `retention_next_message_at` stores the randomized delivery
+time, and an older `retention_message_sent_at` does not suppress the first message after
+a later kick.
 
 The BotHelp payment branch passes `plan=retention_1m` through the normal country,
 currency, payment-method, and `/payments/create` flow. The backend verifies eligibility
