@@ -158,8 +158,8 @@ Required:
 - `LAVA_API_KEY` — Lava.top API key
 - `LAVA_WEBHOOK_LOGIN` / `LAVA_WEBHOOK_PASSWORD` — Basic Auth for Lava webhooks
 - `LAVA_OFFER_CLUB_*` — offer IDs for each subscription plan
-- `LAVA_RETENTION_PROMO_CODE` — server-side promo code for the one-time
-  `retention_1m` payment plan
+- `LAVA_OFFER_CLUB_RETENTION_1M` — hidden one-month product used by the
+  one-time `retention_1m` payment plan
 - `DATABASE_URL` — PostgreSQL connection string
 - `APP_PUBLIC_BASE_URL` — public HTTPS URL for webhook registration
 - `BOTHELP_STEP_SUBSCRIPTION_SYNC` — technical BotHelp step that refreshes

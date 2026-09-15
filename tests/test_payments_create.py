@@ -15,8 +15,8 @@ def _settings() -> SimpleNamespace:
         LAVA_OFFER_CLUB_3M="offer_3m",
         LAVA_OFFER_CLUB_6M="offer_6m",
         LAVA_OFFER_CLUB_12M="offer_12m",
+        LAVA_OFFER_CLUB_RETENTION_1M="offer_retention_1m",
         LAVA_OFFER_MENU="offer_menu",
-        LAVA_RETENTION_PROMO_CODE="-50",
         LAVA_BUYER_EMAIL_DOMAIN="easysteps.app",
         LAVA_API_KEY="lava_api_key",
         KICK_GRACE_SECONDS=86400,
@@ -109,7 +109,7 @@ def test_create_payment_trial_success_returns_payment_link(monkeypatch) -> None:
     assert response.payment_url_path == "products/abc/offer_1w?foo=bar"
 
 
-def test_retention_payment_uses_month_offer_and_server_promo(monkeypatch) -> None:
+def test_retention_payment_uses_hidden_discount_offer(monkeypatch) -> None:
     created: dict = {}
 
     class FakePendingRepo:
@@ -143,8 +143,8 @@ def test_retention_payment_uses_month_offer_and_server_promo(monkeypatch) -> Non
         currency = "RUB"
 
     async def fake_create_invoice(**kwargs):
-        assert kwargs["offer_id"] == "offer_1m"
-        assert kwargs["promo_code"] == "-50"
+        assert kwargs["offer_id"] == "offer_retention_1m"
+        assert kwargs["promo_code"] is None
         return FakeInvoiceResult()
 
     monkeypatch.setattr(payments_route, "PendingInvoiceRepo", FakePendingRepo)

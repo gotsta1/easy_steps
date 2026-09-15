@@ -260,8 +260,8 @@ and an older timestamp does not suppress the first message after a later kick.
 
 The BotHelp payment branch passes `plan=retention_1m` through the normal country,
 currency, payment-method, and `/payments/create` flow. The backend verifies eligibility
-and applies `LAVA_RETENTION_PROMO_CODE` to the normal one-month offer. A successful Lava
-webhook grants 30 days and changes `retention_offers` from `0` to `1`; later discounted
+and uses the hidden `LAVA_OFFER_CLUB_RETENTION_1M` product. A successful Lava webhook
+grants 30 days and changes `retention_offers` from `0` to `1`; later discounted
 invoice creation is rejected. Active users are removed from inactive-user mailings using
 `BOTHELP_STEP_REVIEW_MAILING_STOP` after activation and by periodic reconciliation.
 BotHelp can call `POST /subscriptions/retention-offer` before entering the shared payment

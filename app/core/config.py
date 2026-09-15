@@ -83,8 +83,8 @@ class Settings(BaseSettings):
     LAVA_OFFER_CLUB_3M: str = ""   # 3-month club product
     LAVA_OFFER_CLUB_6M: str = ""   # 6-month club product
     LAVA_OFFER_CLUB_12M: str = ""  # 12-month club product
+    LAVA_OFFER_CLUB_RETENTION_1M: str = ""  # one-time discounted 1-month product
     LAVA_OFFER_MENU: str = ""      # one-time menu product (lifetime access)
-    LAVA_RETENTION_PROMO_CODE: str = ""
 
     @property
     def lava_product_map(self) -> dict[str, int]:
@@ -101,6 +101,7 @@ class Settings(BaseSettings):
             (self.LAVA_OFFER_CLUB_3M, 90),
             (self.LAVA_OFFER_CLUB_6M, 180),
             (self.LAVA_OFFER_CLUB_12M, 365),
+            (self.LAVA_OFFER_CLUB_RETENTION_1M, 30),
         ]:
             if offer_id:
                 mapping[offer_id] = days

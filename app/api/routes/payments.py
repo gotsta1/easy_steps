@@ -42,7 +42,7 @@ _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
     "3m": "LAVA_OFFER_CLUB_3M",
     "6m": "LAVA_OFFER_CLUB_6M",
     "12m": "LAVA_OFFER_CLUB_12M",
-    "retention_1m": "LAVA_OFFER_CLUB_1M",
+    "retention_1m": "LAVA_OFFER_CLUB_RETENTION_1M",
 }
 TRIAL_PLAN = "1w"
 
@@ -229,17 +229,11 @@ async def create_payment(
                 error_code="retention_offer_unavailable",
                 detail="The one-time retention offer is not available.",
             )
-        if not settings.LAVA_RETENTION_PROMO_CODE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Retention offer is not configured.",
-            )
-
     # Generate a deterministic email for this user (Lava requires an email).
     email = f"tg_{body.telegram_user_id}@{settings.LAVA_BUYER_EMAIL_DOMAIN}"
 
     requested_promo_code = (
-        settings.LAVA_RETENTION_PROMO_CODE
+        None
         if product == CLUB_PRODUCT_KEY and plan == RETENTION_PLAN
         else body.promo_code
     )
