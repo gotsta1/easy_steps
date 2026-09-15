@@ -113,10 +113,8 @@ async def test_retention_offer_status_returns_string_boolean() -> None:
             assert product_key == "club"
             return club
 
-    settings = type("Settings", (), {"KICK_GRACE_SECONDS": 86400})()
     response = await retention_offer_status(
         SubscriptionStatusRequest(telegram_user_id=123456789),
-        settings=settings,
         ent_service=FakeEntitlementService(),
     )
 
@@ -136,11 +134,29 @@ async def test_retention_offer_status_returns_false_after_use() -> None:
         async def get_for_telegram_user(self, _telegram_user_id, _product_key):
             return club
 
-    settings = type("Settings", (), {"KICK_GRACE_SECONDS": 86400})()
     response = await retention_offer_status(
         SubscriptionStatusRequest(telegram_user_id=123456789),
-        settings=settings,
         ent_service=FakeEntitlementService(),
     )
 
     assert response.retention_offer_available == "False"
+
+
+async def test_retention_offer_status_ignores_current_club_status() -> None:
+    club = make_entitlement(
+        "club",
+        status=EntitlementStatus.active,
+        active_until=None,
+    )
+    club.retention_offers = 0
+
+    class FakeEntitlementService:
+        async def get_for_telegram_user(self, _telegram_user_id, _product_key):
+            return club
+
+    response = await retention_offer_status(
+        SubscriptionStatusRequest(telegram_user_id=123456789),
+        ent_service=FakeEntitlementService(),
+    )
+
+    assert response.retention_offer_available == "True"

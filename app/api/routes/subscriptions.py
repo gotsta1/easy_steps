@@ -8,10 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
 from app.api.deps import get_entitlement_service, require_admin_token
-from app.core.config import Settings, get_settings
-from app.core.time import utcnow
 from app.db.models import Entitlement, EntitlementStatus
-from app.services.bothelp_club_lifecycle import retention_offer_can_be_redeemed
 from app.services.bothelp_status_sync import subscription_status_for_entitlement
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
@@ -115,18 +112,16 @@ async def subscription_status(
 @router.post("/retention-offer", response_model=RetentionOfferStatusResponse)
 async def retention_offer_status(
     body: SubscriptionStatusRequest,
-    settings: Settings = Depends(get_settings),
     ent_service: EntitlementService = Depends(get_entitlement_service),
 ) -> RetentionOfferStatusResponse:
-    """Return whether the one-time discounted renewal is currently available."""
+    """Return whether the lifetime one-time retention discount is unused."""
     club_entitlement = await ent_service.get_for_telegram_user(
         body.telegram_user_id,
         CLUB_PRODUCT_KEY,
     )
-    available = retention_offer_can_be_redeemed(
-        club_entitlement,
-        utcnow(),
-        settings.KICK_GRACE_SECONDS,
+    available = bool(
+        club_entitlement is not None
+        and (club_entitlement.retention_offers or 0) == 0
     )
     return RetentionOfferStatusResponse(
         retention_offer_available=str(available),
