@@ -15,10 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_entitlement_service, require_admin_token
 from app.core.config import Settings, get_settings
-from app.core.time import utcnow
 from app.db.repo import EntitlementRepo, PendingInvoiceRepo
 from app.db.session import get_db
-from app.services.bothelp_club_lifecycle import retention_offer_can_be_redeemed
+from app.services.bothelp_club_lifecycle import retention_offer_is_unused
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
     MENU_PRODUCT_KEY,
@@ -220,11 +219,7 @@ async def create_payment(
             body.telegram_user_id,
             CLUB_PRODUCT_KEY,
         )
-        if not retention_offer_can_be_redeemed(
-            entitlement,
-            utcnow(),
-            settings.KICK_GRACE_SECONDS,
-        ):
+        if not retention_offer_is_unused(entitlement):
             logger.info(
                 "retention_offer_unavailable telegram_id=%d",
                 body.telegram_user_id,

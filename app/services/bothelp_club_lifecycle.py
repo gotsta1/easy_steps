@@ -76,24 +76,10 @@ def retention_message_is_due(
     )
 
 
-def retention_offer_can_be_redeemed(
-    entitlement: Entitlement | None,
-    now: datetime,
-    kick_grace_seconds: int = 0,
-) -> bool:
-    """Return whether a user may create a discounted retention invoice."""
-    if entitlement is None:
-        return False
-    retention_anchor = entitlement.kicked_at
-    if retention_anchor is None and entitlement.active_until is not None:
-        retention_anchor = entitlement.active_until + timedelta(
-            seconds=kick_grace_seconds
-        )
+def retention_offer_is_unused(entitlement: Entitlement | None) -> bool:
+    """Return whether the lifetime one-time retention discount is unused."""
     return bool(
-        retention_anchor is not None
-        and not is_active_club(entitlement, now)
-        and entitlement.retention_message_sent_at is not None
-        and entitlement.retention_message_sent_at >= retention_anchor
+        entitlement is not None
         and (entitlement.retention_offers or 0) == 0
     )
 

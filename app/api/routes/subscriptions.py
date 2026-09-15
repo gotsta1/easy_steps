@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 
 from app.api.deps import get_entitlement_service, require_admin_token
 from app.db.models import Entitlement, EntitlementStatus
+from app.services.bothelp_club_lifecycle import retention_offer_is_unused
 from app.services.bothelp_status_sync import subscription_status_for_entitlement
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
@@ -119,10 +120,7 @@ async def retention_offer_status(
         body.telegram_user_id,
         CLUB_PRODUCT_KEY,
     )
-    available = bool(
-        club_entitlement is not None
-        and (club_entitlement.retention_offers or 0) == 0
-    )
+    available = retention_offer_is_unused(club_entitlement)
     return RetentionOfferStatusResponse(
         retention_offer_available=str(available),
     )

@@ -128,10 +128,10 @@ def test_retention_payment_uses_month_offer_and_server_promo(monkeypatch) -> Non
             assert product_key == "club"
             now = datetime.now(timezone.utc)
             return SimpleNamespace(
-                status=EntitlementStatus.inactive,
-                active_until=None,
-                kicked_at=now - timedelta(days=8),
-                retention_message_sent_at=now - timedelta(days=1),
+                status=EntitlementStatus.active,
+                active_until=now + timedelta(days=30),
+                kicked_at=None,
+                retention_message_sent_at=None,
                 retention_offers=0,
             )
 

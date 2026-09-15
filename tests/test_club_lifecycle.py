@@ -9,7 +9,7 @@ from app.db.models import Entitlement, EntitlementStatus
 from app.services.bothelp_club_lifecycle import (
     _trigger_retention_message,
     is_club_lifecycle_configured,
-    retention_offer_can_be_redeemed,
+    retention_offer_is_unused,
     retention_message_is_due,
 )
 
@@ -142,25 +142,20 @@ def test_historical_expiry_waits_seven_days_after_kick_grace() -> None:
     assert retention_message_is_due(entitlement, now, 168, 72, 86400) is False
 
 
-def test_retention_invoice_requires_sent_offer_and_unused_discount() -> None:
+def test_retention_invoice_only_checks_unused_discount() -> None:
     now = datetime(2026, 9, 15, tzinfo=timezone.utc)
 
-    assert retention_offer_can_be_redeemed(make_entitlement(now), now) is False
-    assert retention_offer_can_be_redeemed(make_entitlement(now, sent=True), now) is True
+    assert retention_offer_is_unused(None) is False
+    assert retention_offer_is_unused(make_entitlement(now)) is True
+    assert retention_offer_is_unused(make_entitlement(now, sent=True)) is True
     assert (
-        retention_offer_can_be_redeemed(
-            make_entitlement(now, sent=True, redeemed=1), now
-        )
+        retention_offer_is_unused(make_entitlement(now, sent=True, redeemed=1))
         is False
     )
 
     active = make_entitlement(now, status=EntitlementStatus.active, sent=True)
     active.active_until = now + timedelta(days=30)
-    assert retention_offer_can_be_redeemed(active, now) is False
-
-    historical = make_entitlement(now, kicked_hours_ago=None, sent=True)
-    historical.active_until = now - timedelta(days=9)
-    assert retention_offer_can_be_redeemed(historical, now, 86400) is True
+    assert retention_offer_is_unused(active) is True
 
 
 async def test_retention_step_marks_offer_sent_only_after_success() -> None:

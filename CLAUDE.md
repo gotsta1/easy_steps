@@ -266,8 +266,8 @@ invoice creation is rejected. Active users are removed from inactive-user mailin
 `BOTHELP_STEP_REVIEW_MAILING_STOP` after activation and by periodic reconciliation.
 BotHelp can call `POST /subscriptions/retention-offer` before entering the shared payment
 flow; it returns whether the lifetime `retention_offers` flag is still `0` as the string
-`True` or `False`. The create endpoint still performs the full eligibility check and
-remains authoritative.
+`True` or `False`. Discounted invoice creation uses the same single check, regardless of
+current club status, expiry, kick time, or retention-message history.
 
 ### Google Sheets
 
