@@ -24,18 +24,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_entitlement_service
 from app.core.config import Settings, get_settings
 from app.core.security import verify_lava_basic_auth
+from app.db.models import Entitlement, PendingInvoice
 from app.db.repo import LavaEventRepo, PendingInvoiceRepo
 from app.db.session import get_db
 from app.services import lava as lava_svc
+from app.services.bothelp_club_lifecycle import sync_active_user_mailing_cleanup
 from app.services.bothelp_status_sync import sync_telegram_user_status
-from app.services.bothelp_review_mailing import sync_review_mailing_for_telegram_user
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
     MENU_PRODUCT_KEY,
+    RETENTION_PLAN,
     EntitlementService,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _mark_retention_offer_redeemed(
+    entitlement: Entitlement,
+    pending: PendingInvoice | None,
+) -> bool:
+    """Persist the one-lifetime redemption flag for a retention invoice."""
+    if pending is None or pending.plan != RETENTION_PLAN:
+        return False
+    entitlement.retention_offers = 1
+    return True
 
 
 def _extract_contract_id(payload: dict) -> str | None:
@@ -179,11 +192,14 @@ async def lava_webhook_handler(
 
         product_key, duration_days = offer_details
         if duration_days is None:
-            await ent_service.apply_lifetime_success(telegram_user_id, product_key)
+            entitlement = await ent_service.apply_lifetime_success(
+                telegram_user_id, product_key
+            )
         else:
-            await ent_service.apply_payment_success(
+            entitlement = await ent_service.apply_payment_success(
                 telegram_user_id, duration_days, product_key
             )
+        _mark_retention_offer_redeemed(entitlement, pending)
         should_sync_status = product_key == CLUB_PRODUCT_KEY
 
         # Try immediately. A failure is persisted and retried by the worker.
@@ -211,7 +227,7 @@ async def lava_webhook_handler(
         await db.commit()
         await sync_telegram_user_status(db, settings, telegram_user_id)
         if action == "payment_success":
-            await sync_review_mailing_for_telegram_user(
+            await sync_active_user_mailing_cleanup(
                 db, settings, telegram_user_id
             )
 

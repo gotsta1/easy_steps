@@ -15,11 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_entitlement_service, require_admin_token
 from app.core.config import Settings, get_settings
-from app.db.repo import PendingInvoiceRepo
+from app.core.time import utcnow
+from app.db.repo import EntitlementRepo, PendingInvoiceRepo
 from app.db.session import get_db
+from app.services.bothelp_club_lifecycle import retention_offer_can_be_redeemed
 from app.services.entitlements import (
     CLUB_PRODUCT_KEY,
     MENU_PRODUCT_KEY,
+    RETENTION_PLAN,
     EntitlementService,
 )
 from app.services.lava_api import LavaAPIError, create_invoice
@@ -40,6 +43,7 @@ _PLAN_TO_CONFIG_ATTR: dict[str, str] = {
     "3m": "LAVA_OFFER_CLUB_3M",
     "6m": "LAVA_OFFER_CLUB_6M",
     "12m": "LAVA_OFFER_CLUB_12M",
+    "retention_1m": "LAVA_OFFER_CLUB_1M",
 }
 TRIAL_PLAN = "1w"
 
@@ -66,6 +70,7 @@ _PLAN_ALIASES: dict[str, str] = {
     "3мес": "3m",
     "6мес": "6m",
     "12мес": "12m",
+    "retention_1m": "retention_1m",
 }
 
 
@@ -124,6 +129,16 @@ class CreatePaymentResponse(BaseModel):
     amount: float | None = None
     currency: str | None = None
     amount_display: str | None = None
+
+
+def format_amount_display(amount: float, currency: str) -> str:
+    """Format Lava's exact amount without dropping fractional currency units."""
+    numeric_amount = float(amount)
+    decimals = 0 if numeric_amount.is_integer() else 2
+    formatted = f"{numeric_amount:,.{decimals}f}".replace(",", " ")
+    currency_symbols = {"RUB": "₽", "USD": "$", "EUR": "€"}
+    symbol = currency_symbols.get(currency, currency)
+    return f"{formatted}{symbol}" if currency == "RUB" else f"{symbol}{formatted}"
 
 
 @router.post("/create", response_model=CreatePaymentResponse)
@@ -200,12 +215,42 @@ async def create_payment(
                 detail="Trial plan '1w' can be purchased only once.",
             )
 
+    if product == CLUB_PRODUCT_KEY and plan == RETENTION_PLAN:
+        entitlement = await EntitlementRepo(db).get_by_telegram_and_product(
+            body.telegram_user_id,
+            CLUB_PRODUCT_KEY,
+        )
+        if not retention_offer_can_be_redeemed(
+            entitlement,
+            utcnow(),
+            settings.KICK_GRACE_SECONDS,
+        ):
+            logger.info(
+                "retention_offer_unavailable telegram_id=%d",
+                body.telegram_user_id,
+            )
+            return CreatePaymentResponse(
+                ok=False,
+                error_code="retention_offer_unavailable",
+                detail="The one-time retention offer is not available.",
+            )
+        if not settings.LAVA_RETENTION_PROMO_CODE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Retention offer is not configured.",
+            )
+
     # Generate a deterministic email for this user (Lava requires an email).
     email = f"tg_{body.telegram_user_id}@{settings.LAVA_BUYER_EMAIL_DOMAIN}"
 
+    requested_promo_code = (
+        settings.LAVA_RETENTION_PROMO_CODE
+        if product == CLUB_PRODUCT_KEY and plan == RETENTION_PLAN
+        else body.promo_code
+    )
     promo_code: str | None = None
-    if body.promo_code:
-        normalized = body.promo_code.strip().upper()
+    if requested_promo_code:
+        normalized = requested_promo_code.strip().upper()
         if re.fullmatch(r"[A-Z0-9_\-]{3,36}", normalized):
             promo_code = normalized
         else:
@@ -279,13 +324,7 @@ async def create_payment(
         path_and_query += "?" + parsed.query
     amount_display: str | None = None
     if result.amount is not None and result.currency:
-        currency_symbols = {"RUB": "₽", "USD": "$", "EUR": "€"}
-        symbol = currency_symbols.get(result.currency, result.currency)
-        formatted = f"{result.amount:,.0f}".replace(",", " ")
-        if result.currency == "RUB":
-            amount_display = f"{formatted}{symbol}"
-        else:
-            amount_display = f"{symbol}{formatted}"
+        amount_display = format_amount_display(result.amount, result.currency)
 
     return CreatePaymentResponse(
         payment_url=result.payment_url,

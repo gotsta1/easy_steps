@@ -15,7 +15,7 @@ Handles the full lifecycle: payment processing → subscription management → c
 4. Backend generates a one-time Telegram invite link and returns it to BotHelp
 5. User clicks the invite link and joins the private channel instantly
 6. When subscription expires → bot automatically kicks the user from the channel
-7. Post-expiry notifications are sent via BotHelp at configurable intervals
+7. Post-kick notifications and retention messages are sent via BotHelp
 
 ---
 
@@ -38,7 +38,7 @@ Telegram
 
 Background jobs (every 15 min)
     ├─ Kick expired members (ban + unban)
-    └─ Send post-expiry notifications via BotHelp API
+    └─ Send post-kick and retention notifications via BotHelp API
 ```
 
 ---
@@ -67,7 +67,7 @@ Background jobs (every 15 min)
 - **Subscription stacking** — renewals extend from the current `active_until`, not from today
 - **One-time invite links** — Telegram `member_limit=1` + 2h TTL, spam-protected via in-memory cache
 - **Automatic kick on expiry** — ban + instant unban so users can rejoin after renewal
-- **9-threshold post-expiry notifications** — 10h, 3d, 1w, 10d, 15d, 20d, 25d, 30d, 35d after expiry
+- **Focused notification policy** — 3d/2d before expiry, then 10h/3d after kick
 - **Google Sheets analytics** — successful payments written to spreadsheet with Moscow timezone
 - **Daily database backups** — pg_dump sent to Telegram every night at 3:00 UTC
 - **Configurable via env** — zero hardcoded business logic, everything in `.env`
@@ -158,14 +158,19 @@ Required:
 - `LAVA_API_KEY` — Lava.top API key
 - `LAVA_WEBHOOK_LOGIN` / `LAVA_WEBHOOK_PASSWORD` — Basic Auth for Lava webhooks
 - `LAVA_OFFER_CLUB_*` — offer IDs for each subscription plan
+- `LAVA_RETENTION_PROMO_CODE` — server-side promo code for the one-time
+  `retention_1m` payment plan
 - `DATABASE_URL` — PostgreSQL connection string
 - `APP_PUBLIC_BASE_URL` — public HTTPS URL for webhook registration
 - `BOTHELP_STEP_SUBSCRIPTION_SYNC` — technical BotHelp step that refreshes
   the `club_subscription_status` subscriber field
-- `BOTHELP_STEP_REVIEW_MAILING` — technical BotHelp step that enrolls club
-  users into the review mailing 120 hours after their access expires
 - `BOTHELP_STEP_REVIEW_MAILING_STOP` — technical BotHelp step that removes an
-  active club member from the review mailing
+  active club member from inactive-user mailings
+- `BOTHELP_STEP_RETENTION_OFFER` — discounted retention message starting 168
+  hours after the user's successful Telegram kick
+- `BOTHELP_STEP_RETENTION_USED` — regular retention message for users who have
+  already redeemed the discount; both retention messages repeat every 72 hours
+  while club access remains inactive
 
 ---
 

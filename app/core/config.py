@@ -48,15 +48,17 @@ class Settings(BaseSettings):
     BOTHELP_BOT_REFERRAL: str = ""           # referral бота в BotHelp
     BOTHELP_STEP_NOTIFY_3D: str = ""         # step referral: "осталось 3 дня"
     BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
-    BOTHELP_STEP_NOTIFY_EXPIRED_10H: str = ""
-    BOTHELP_STEP_NOTIFY_EXPIRED_3D: str = ""
+    BOTHELP_STEP_NOTIFY_KICKED_10H: str = ""
+    BOTHELP_STEP_NOTIFY_KICKED_3D: str = ""
     BOTHELP_STEP_SUBSCRIPTION_SYNC: str = ""
     BOTHELP_STATUS_SYNC_INTERVAL_SECONDS: int = 900
     BOTHELP_STATUS_SYNC_BACKLOG_INTERVAL_SECONDS: int = 60
     BOTHELP_STATUS_SYNC_BATCH_SIZE: int = 50
-    BOTHELP_STEP_REVIEW_MAILING: str = ""
     BOTHELP_STEP_REVIEW_MAILING_STOP: str = ""
-    BOTHELP_REVIEW_DELAY_HOURS: int = 120
+    BOTHELP_STEP_RETENTION_OFFER: str = ""
+    BOTHELP_STEP_RETENTION_USED: str = ""
+    BOTHELP_RETENTION_DELAY_HOURS: int = 168
+    BOTHELP_RETENTION_REPEAT_HOURS: int = 72
     BOTHELP_REVIEW_INTERVAL_SECONDS: int = 900
     BOTHELP_REVIEW_BACKLOG_INTERVAL_SECONDS: int = 60
     BOTHELP_REVIEW_BATCH_SIZE: int = 50
@@ -82,6 +84,7 @@ class Settings(BaseSettings):
     LAVA_OFFER_CLUB_6M: str = ""   # 6-month club product
     LAVA_OFFER_CLUB_12M: str = ""  # 12-month club product
     LAVA_OFFER_MENU: str = ""      # one-time menu product (lifetime access)
+    LAVA_RETENTION_PROMO_CODE: str = ""
 
     @property
     def lava_product_map(self) -> dict[str, int]:
@@ -116,12 +119,12 @@ class Settings(BaseSettings):
         return mapping
 
     @property
-    def notify_post_expiry_hours_map(self) -> dict[int, str]:
-        """hours-after-expiry → BotHelp step referral."""
+    def notify_post_kick_hours_map(self) -> dict[int, str]:
+        """Hours after a successful Telegram kick to BotHelp step referral."""
         mapping: dict[int, str] = {}
         for hours, step in [
-            (10, self.BOTHELP_STEP_NOTIFY_EXPIRED_10H),
-            (72, self.BOTHELP_STEP_NOTIFY_EXPIRED_3D),
+            (10, self.BOTHELP_STEP_NOTIFY_KICKED_10H),
+            (72, self.BOTHELP_STEP_NOTIFY_KICKED_3D),
         ]:
             if step:
                 mapping[hours] = step

@@ -102,8 +102,7 @@ class EntitlementRepo:
             if active_until is not None:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal
-                    ent.expiry_notified_3h_at = None
-                    ent.last_post_expiry_hours = None
+                    ent.last_post_kick_hours = None
                 ent.active_until = active_until
             if duration_days is not None:
                 ent.duration_days = duration_days
@@ -134,50 +133,25 @@ class EntitlementRepo:
         )
         return list(result.scalars().all())
 
-    async def get_expiring_within_hours(
+    async def get_kicked_since_hours(
         self, now: datetime, hours: int
     ) -> list[Entitlement]:
         """
-        Return active entitlements expiring within ``hours`` hours from ``now``
-        that have not yet received the 3-hour notification.
-        """
-        from datetime import timedelta
-
-        deadline = now + timedelta(hours=hours)
-        result = await self._db.execute(
-            select(Entitlement).where(
-                Entitlement.status == EntitlementStatus.active,
-                Entitlement.active_until.isnot(None),
-                Entitlement.active_until > now,
-                Entitlement.active_until <= deadline,
-                Entitlement.expiry_notified_3h_at.is_(None),
-            )
-        )
-        return list(result.scalars().all())
-
-    async def get_expired_since_hours(
-        self, now: datetime, hours: int
-    ) -> list[Entitlement]:
-        """
-        Return entitlements expired at least ``hours`` hours ago that have not
-        yet received the post-expiry notification.
+        Return inactive entitlements kicked at least ``hours`` ago that have
+        not received that post-kick notification.
         """
         from datetime import timedelta
 
         cutoff = now - timedelta(hours=hours)
         result = await self._db.execute(
             select(Entitlement).where(
-                Entitlement.active_until.isnot(None),
-                Entitlement.active_until <= cutoff,
+                Entitlement.product_key == "club",
+                Entitlement.status != EntitlementStatus.active,
+                Entitlement.kicked_at.isnot(None),
+                Entitlement.kicked_at <= cutoff,
                 sa.or_(
-                    Entitlement.last_post_expiry_hours.is_(None),
-                    Entitlement.last_post_expiry_hours < hours,
-                ),
-                Entitlement.status.in_(
-                    [
-                        EntitlementStatus.active,
-                        EntitlementStatus.inactive,
-                    ]
+                    Entitlement.last_post_kick_hours.is_(None),
+                    Entitlement.last_post_kick_hours < hours,
                 ),
             )
         )
@@ -222,23 +196,39 @@ class EntitlementRepo:
         )
         return [(row[0], row[1]) for row in result.all()]
 
-    async def get_pending_review_mailing_enrollments(
+    async def get_pending_retention_messages(
         self,
-        cutoff: datetime,
+        first_send_cutoff: datetime,
+        historical_first_send_cutoff: datetime,
+        repeat_cutoff: datetime,
         limit: int,
     ) -> list[tuple[Entitlement, User]]:
-        """Return club users eligible for the review mailing enrollment."""
+        """Return current and historical club users due for retention."""
         result = await self._db.execute(
             select(Entitlement, User)
             .join(User, User.id == Entitlement.user_id)
             .where(
                 Entitlement.product_key == "club",
-                Entitlement.active_until.isnot(None),
-                Entitlement.active_until <= cutoff,
-                Entitlement.review_mailing_state.is_distinct_from("enrolled"),
+                Entitlement.status != EntitlementStatus.active,
+                sa.or_(
+                    Entitlement.kicked_at <= first_send_cutoff,
+                    sa.and_(
+                        Entitlement.kicked_at.is_(None),
+                        Entitlement.active_until.isnot(None),
+                        Entitlement.active_until <= historical_first_send_cutoff,
+                    ),
+                ),
+                sa.or_(
+                    Entitlement.retention_message_sent_at.is_(None),
+                    Entitlement.retention_message_sent_at < Entitlement.kicked_at,
+                    Entitlement.retention_message_sent_at <= repeat_cutoff,
+                ),
                 User.bothelp_subscriber_id.isnot(None),
             )
-            .order_by(Entitlement.active_until, Entitlement.id)
+            .order_by(
+                sa.func.coalesce(Entitlement.kicked_at, Entitlement.active_until),
+                Entitlement.id,
+            )
             .limit(limit)
             .with_for_update(of=Entitlement, skip_locked=True)
         )

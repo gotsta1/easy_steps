@@ -80,17 +80,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             settings.BOTHELP_STATUS_SYNC_BATCH_SIZE,
         )
 
-    from app.services.bothelp_review_mailing import (
-        is_review_mailing_configured,
-        review_mailing_loop,
+    from app.services.bothelp_club_lifecycle import (
+        club_lifecycle_loop,
+        is_club_lifecycle_configured,
     )
 
-    if is_review_mailing_configured(settings):
-        review_mailing_task = asyncio.create_task(review_mailing_loop(settings))
-        app.state.review_mailing_task = review_mailing_task
+    if is_club_lifecycle_configured(settings):
+        club_lifecycle_task = asyncio.create_task(club_lifecycle_loop(settings))
+        app.state.club_lifecycle_task = club_lifecycle_task
         logger.info(
-            "review_mailing_job_started delay_h=%d interval_s=%d batch_size=%d",
-            settings.BOTHELP_REVIEW_DELAY_HOURS,
+            "club_lifecycle_job_started retention_delay_h=%d repeat_h=%d "
+            "interval_s=%d batch_size=%d",
+            settings.BOTHELP_RETENTION_DELAY_HOURS,
+            settings.BOTHELP_RETENTION_REPEAT_HOURS,
             settings.BOTHELP_REVIEW_INTERVAL_SECONDS,
             settings.BOTHELP_REVIEW_BATCH_SIZE,
         )
@@ -121,10 +123,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except asyncio.CancelledError:
             pass
 
-    if hasattr(app.state, "review_mailing_task"):
-        app.state.review_mailing_task.cancel()
+    if hasattr(app.state, "club_lifecycle_task"):
+        app.state.club_lifecycle_task.cancel()
         try:
-            await app.state.review_mailing_task
+            await app.state.club_lifecycle_task
         except asyncio.CancelledError:
             pass
 
@@ -251,7 +253,7 @@ async def _kick_loop(settings: Settings) -> None:
 
 
 async def _run_notify_job(settings: Settings) -> None:
-    """Send expiry warnings via BotHelp API for days/hours-before-expiry thresholds."""
+    """Send pre-expiry and post-kick notification steps through BotHelp."""
     from sqlalchemy import select
 
     from app.core.time import utcnow
@@ -261,8 +263,8 @@ async def _run_notify_job(settings: Settings) -> None:
     from app.services.bothelp_api import BotHelpClient, BotHelpAPIError
 
     steps_map = settings.notify_steps_map
-    post_expiry_hours_map = settings.notify_post_expiry_hours_map
-    if (not steps_map and not post_expiry_hours_map) or not settings.BOTHELP_CLIENT_ID:
+    post_kick_hours_map = settings.notify_post_kick_hours_map
+    if (not steps_map and not post_kick_hours_map) or not settings.BOTHELP_CLIENT_ID:
         return  # notifications not configured
 
     bothelp = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
@@ -300,13 +302,13 @@ async def _run_notify_job(settings: Settings) -> None:
                         days,
                     )
 
-        # Process post-expiry thresholds (10 and 72 hours after expiry).
-        for hours in sorted(post_expiry_hours_map.keys(), reverse=True):
-            step_referral = post_expiry_hours_map[hours]
-            expired = await ent_repo.get_expired_since_hours(now, hours)
+        # Process thresholds 10 and 72 hours after a successful Telegram kick.
+        for hours in sorted(post_kick_hours_map.keys(), reverse=True):
+            step_referral = post_kick_hours_map[hours]
+            kicked = await ent_repo.get_kicked_since_hours(now, hours)
 
-            for ent in expired:
-                if not _should_send_post_expiry_notification(ent.duration_days, hours):
+            for ent in kicked:
+                if not _should_send_post_kick_notification(ent.duration_days, hours):
                     continue
                 result = await db.execute(select(User).where(User.id == ent.user_id))
                 user: User | None = result.scalar_one_or_none()
@@ -318,11 +320,11 @@ async def _run_notify_job(settings: Settings) -> None:
                         bot_referral=settings.BOTHELP_BOT_REFERRAL,
                         step_referral=step_referral,
                     )
-                    ent.last_post_expiry_hours = hours
+                    ent.last_post_kick_hours = hours
                     total_sent += 1
                 except BotHelpAPIError:
                     logger.warning(
-                        "notify_failed tg_id=%d bothelp_id=%d post_expiry_hours=%d",
+                        "notify_failed tg_id=%d bothelp_id=%d post_kick_hours=%d",
                         user.telegram_user_id,
                         user.bothelp_subscriber_id,
                         hours,
@@ -339,10 +341,10 @@ def _should_send_expiry_notification(duration_days: int | None, days_before: int
     return days_before in {2, 3}
 
 
-def _should_send_post_expiry_notification(
+def _should_send_post_kick_notification(
     duration_days: int | None, hours_after: int
 ) -> bool:
-    """Post-expiry policy: send after 10 hours and 3 days for all plans."""
+    """Post-kick policy: send after 10 hours and 3 days for all plans."""
     return hours_after in {10, 72}
 
 
@@ -395,6 +397,8 @@ def _mark_entitlement_kicked(entitlement: Any, kicked_at: datetime) -> None:
 
     entitlement.status = EntitlementStatus.inactive
     entitlement.kicked_at = kicked_at
+    entitlement.review_mailing_state = None
+    entitlement.review_mailing_synced_at = None
     entitlement.updated_at = kicked_at
 
 

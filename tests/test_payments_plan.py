@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.api.routes.payments import normalize_plan, normalize_product
+from app.api.routes.payments import format_amount_display, normalize_plan, normalize_product
 
 
 @pytest.mark.parametrize(
@@ -13,6 +13,7 @@ from app.api.routes.payments import normalize_plan, normalize_product
         ("3m", "3m"),
         ("6m", "6m"),
         ("12m", "12m"),
+        ("retention_1m", "retention_1m"),
         ("1н", "1w"),
         ("1нед", "1w"),
         ("1", "1m"),
@@ -51,3 +52,20 @@ def test_normalize_product_supported_variants(raw: str, expected: str) -> None:
 def test_normalize_product_rejects_invalid_values(raw: str) -> None:
     with pytest.raises(ValueError):
         normalize_product(raw)
+
+
+@pytest.mark.parametrize(
+    ("amount", "currency", "expected"),
+    [
+        (695.0, "RUB", "695₽"),
+        (1290.0, "RUB", "1 290₽"),
+        (8.19, "USD", "$8.19"),
+        (7.1, "EUR", "€7.10"),
+    ],
+)
+def test_format_amount_display_keeps_fractional_currency_units(
+    amount: float,
+    currency: str,
+    expected: str,
+) -> None:
+    assert format_amount_display(amount, currency) == expected

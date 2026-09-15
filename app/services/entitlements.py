@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # Club offers (1w/1m/3m/6m/12m) share one entitlement key with varying duration.
 CLUB_PRODUCT_KEY = "club"
 MENU_PRODUCT_KEY = "menu"
+RETENTION_PLAN = "retention_1m"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,8 +180,7 @@ class EntitlementService:
             existing.duration_days = None
             existing.kicked_at = None
             existing.expiry_notified_days = None
-            existing.expiry_notified_3h_at = None
-            existing.last_post_expiry_hours = None
+            existing.last_post_kick_hours = None
             existing.updated_at = utcnow()
             await self._db.flush()
             ent = existing

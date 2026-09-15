@@ -89,6 +89,13 @@ class Entitlement(Base):
     kicked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Last retention message for the current or previous kick cycle.
+    retention_message_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    retention_offers: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     # Original plan duration in days (7, 30, 90, etc.). NULL = lifetime.
     duration_days: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
@@ -98,20 +105,16 @@ class Entitlement(Base):
     expiry_notified_days: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
-    # Timestamp of a 3-hour-before-expiry notification (trial week only).
-    expiry_notified_3h_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, default=None
-    )
-    # Tracks the highest post-expiry notification threshold (in hours) already sent.
+    # Tracks the highest post-kick notification threshold (in hours) already sent.
     # NULL = none sent yet. Reset to NULL on renewal.
-    last_post_expiry_hours: Mapped[int | None] = mapped_column(
+    last_post_kick_hours: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
-    # Durable delivery state for enrolling the user into the review mailing.
+    # Durable state for removing active users from inactive-user mailings.
     review_mailing_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
-    # Last state successfully applied in BotHelp: "enrolled" or "stopped".
+    # The only currently applied state is "stopped".
     review_mailing_state: Mapped[str | None] = mapped_column(
         Text, nullable=True, default=None
     )

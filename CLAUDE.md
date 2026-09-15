@@ -36,7 +36,7 @@ EasySteps is a FastAPI backend connecting:
 
 The backend creates invoices, records successful payments, grants or extends access,
 approves Telegram join requests, removes expired club members, sends BotHelp lifecycle
-messages, synchronizes subscription state to BotHelp, and reconciles review mailings.
+messages, synchronizes subscription state to BotHelp, and cleans active users from mailings.
 
 ## Technology and layout
 
@@ -62,7 +62,8 @@ Important files:
 - `app/api/routes/lava_webhook.py`: idempotent payment event processing.
 - `app/api/routes/subscriptions.py`: BotHelp-friendly status response.
 - `app/services/bothelp_status_sync.py`: durable three-state BotHelp synchronization.
-- `app/services/bothelp_review_mailing.py`: review-mailing enrollment/removal.
+- `app/services/bothelp_club_lifecycle.py`: active-user mailing cleanup and
+  recurring retention-message delivery.
 - `app/services/google_sheets.py`: worksheet format and invoice-ID deduplication.
 - `app/services/gsheet_delivery.py`: durable Sheets retry worker.
 - `app/bots/access_bot/handlers.py`: Telegram join-request decisions.
@@ -89,6 +90,8 @@ Relevant fields:
 - `status`: `active`, `inactive`, `past_due`, or `canceled`;
 - `active_until`: UTC expiry; `NULL` means lifetime;
 - `kicked_at`: actual successful Telegram kick time for the current expired access cycle;
+- `retention_message_sent_at`: last confirmed retention-step trigger;
+- `retention_offers`: paid retention offers (`0` or `1`);
 - `duration_days`: original/most recently applied plan length;
 - notification delivery markers;
 - review-mailing reconciliation state and retry metadata.
@@ -156,7 +159,7 @@ Lava calls the configured webhook using Basic Auth.
 4. Resolve the offer to `club + days` or lifetime `menu`.
 5. On success, mark the invoice paid and activate/extend the entitlement.
 6. Commit club changes before triggering BotHelp status synchronization.
-7. Stop an active user from the review mailing after a successful club purchase.
+7. Stop an active user from inactive-user mailings after a successful club purchase.
 8. If `pending.ref == "tanya"`, attempt Google Sheets delivery immediately; failures are
    persisted for retry.
 
@@ -239,26 +242,28 @@ The current configured policy supports only four BotHelp message steps:
 
 - 3 days before club expiry;
 - 2 days before club expiry;
-- 10 hours after club expiry;
-- 3 days (72 hours) after club expiry.
+- 10 hours after the actual successful Telegram kick;
+- 3 days (72 hours) after the actual successful Telegram kick.
 
 Delivery markers in the entitlement prevent repeated threshold delivery. Successful
 renewal/upsert resets the relevant markers. Notifications require a stored BotHelp
 subscriber ID.
 
-### Review mailing
+### Club lifecycle and retention
 
-The review-mailing worker reconciles an entitlement to one of two confirmed BotHelp
-states:
+The club-lifecycle worker gives active-user mailing cleanup priority. Seven days (168
+hours) after an actual successful Telegram kick, it starts retention messages while club
+access remains inactive. Messages repeat every 72 hours. Users with `retention_offers=0`
+receive `BOTHELP_STEP_RETENTION_OFFER`; users with `retention_offers=1` receive
+`BOTHELP_STEP_RETENTION_USED`. `retention_message_sent_at` controls the repeat interval,
+and an older timestamp does not suppress the first message after a later kick.
 
-- `enrolled`: access ended at least `BOTHELP_REVIEW_DELAY_HOURS` ago (normally 120h);
-- `stopped`: club access is currently active.
-
-Active-user removals have priority. Only mismatched states are sent to BotHelp. A full
-batch causes the backlog interval; otherwise the normal interval is used. Both enrollment
-and removal are BotHelp technical step referrals configured through environment variables.
-Manual access grants must also reconcile status and review-mailing state; changing only an
-entitlement row can leave BotHelp stale until workers process it.
+The BotHelp payment branch passes `plan=retention_1m` through the normal country,
+currency, payment-method, and `/payments/create` flow. The backend verifies eligibility
+and applies `LAVA_RETENTION_PROMO_CODE` to the normal one-month offer. A successful Lava
+webhook grants 30 days and changes `retention_offers` from `0` to `1`; later discounted
+invoice creation is rejected. Active users are removed from inactive-user mailings using
+`BOTHELP_STEP_REVIEW_MAILING_STOP` after activation and by periodic reconciliation.
 
 ### Google Sheets
 
@@ -376,7 +381,7 @@ used SQL. If SQL is unavoidable:
    remaining time.
 5. Reset expiry notification markers when extending access.
 6. For lifetime menu, use active status with `active_until=NULL` and `duration_days=NULL`.
-7. Reconcile BotHelp subscription status and stop review mailing for newly active club
+7. Reconcile BotHelp subscription status and stop inactive-user mailings for newly active club
    users.
 8. Verify SQL state, `/subscriptions/status`, BotHelp delivery state, and Telegram behavior.
 
@@ -393,10 +398,8 @@ the grant represented as a payment. Entitlements and payment history are separat
   sensitive personal data to these bodies, and consider structured redaction.
 - CORS currently allows all origins.
 - The admin API is mostly a stub, which encourages risky direct SQL for support operations.
-- README may lag behind code. For example, old descriptions of nine post-expiry thresholds
-  are no longer current.
-- `apply_lifetime_success()` should be checked before using it on an existing menu row: it
-  references a legacy notification attribute that is not present in the current model.
+- Trust `Settings.notify_steps_map`, `Settings.notify_post_kick_hours_map`, and tests for
+  the current notification policy.
 - There is no explicit uniqueness constraint visible in the current ORM model for
   `(user_id, product_key)`; preserve the one-row-per-product invariant and check migrations
   before changing upsert behavior.
