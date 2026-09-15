@@ -264,6 +264,9 @@ and applies `LAVA_RETENTION_PROMO_CODE` to the normal one-month offer. A success
 webhook grants 30 days and changes `retention_offers` from `0` to `1`; later discounted
 invoice creation is rejected. Active users are removed from inactive-user mailings using
 `BOTHELP_STEP_REVIEW_MAILING_STOP` after activation and by periodic reconciliation.
+BotHelp can call `POST /subscriptions/retention-offer` before entering the shared payment
+flow; it returns `retention_offer_available` as the string `True` or `False`. The create
+endpoint still repeats the same eligibility check and remains authoritative.
 
 ### Google Sheets
 

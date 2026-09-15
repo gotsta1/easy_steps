@@ -186,6 +186,7 @@ Required:
 | POST | `/tg/access/webhook` | Receive Telegram bot updates |
 | POST | `/bothelp/webhook` | Receive BotHelp subscriber events |
 | POST | `/subscriptions/status` | Return club/menu and three-state subscription status |
+| POST | `/subscriptions/retention-offer` | Check one-time retention discount availability |
 | POST | `/invites/club` | Generate club invite link (admin) |
 
 ---

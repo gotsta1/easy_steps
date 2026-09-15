@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.api.routes.subscriptions import build_subscription_status
+from app.api.routes.subscriptions import (
+    SubscriptionStatusRequest,
+    build_subscription_status,
+    retention_offer_status,
+)
 from app.db.models import Entitlement, EntitlementStatus
 
 NOW = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
@@ -92,3 +96,51 @@ def test_inactive_menu_returns_false() -> None:
     response = build_subscription_status(None, menu, now=NOW)
 
     assert response.menu == "False"
+
+
+async def test_retention_offer_status_returns_string_boolean() -> None:
+    club = make_entitlement(
+        "club",
+        status=EntitlementStatus.inactive,
+        active_until=NOW - timedelta(days=9),
+    )
+    club.retention_message_sent_at = NOW - timedelta(days=1)
+    club.retention_offers = 0
+
+    class FakeEntitlementService:
+        async def get_for_telegram_user(self, telegram_user_id, product_key):
+            assert telegram_user_id == 123456789
+            assert product_key == "club"
+            return club
+
+    settings = type("Settings", (), {"KICK_GRACE_SECONDS": 86400})()
+    response = await retention_offer_status(
+        SubscriptionStatusRequest(telegram_user_id=123456789),
+        settings=settings,
+        ent_service=FakeEntitlementService(),
+    )
+
+    assert response.retention_offer_available == "True"
+
+
+async def test_retention_offer_status_returns_false_after_use() -> None:
+    club = make_entitlement(
+        "club",
+        status=EntitlementStatus.inactive,
+        active_until=NOW - timedelta(days=9),
+    )
+    club.retention_message_sent_at = NOW - timedelta(days=1)
+    club.retention_offers = 1
+
+    class FakeEntitlementService:
+        async def get_for_telegram_user(self, _telegram_user_id, _product_key):
+            return club
+
+    settings = type("Settings", (), {"KICK_GRACE_SECONDS": 86400})()
+    response = await retention_offer_status(
+        SubscriptionStatusRequest(telegram_user_id=123456789),
+        settings=settings,
+        ent_service=FakeEntitlementService(),
+    )
+
+    assert response.retention_offer_available == "False"
