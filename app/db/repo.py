@@ -100,6 +100,7 @@ class EntitlementRepo:
             if status == EntitlementStatus.active:
                 ent.kicked_at = None
                 ent.retention_next_message_at = None
+                ent.retention_next_message_index = 0
             if active_until is not None:
                 if ent.active_until is None or active_until > ent.active_until:
                     ent.expiry_notified_days = None  # reset notifications on renewal

@@ -401,6 +401,7 @@ def _mark_entitlement_kicked(entitlement: Any, kicked_at: datetime) -> None:
     entitlement.status = EntitlementStatus.inactive
     entitlement.kicked_at = kicked_at
     entitlement.retention_next_message_at = None
+    entitlement.retention_next_message_index = 0
     entitlement.review_mailing_state = None
     entitlement.review_mailing_synced_at = None
     entitlement.updated_at = kicked_at

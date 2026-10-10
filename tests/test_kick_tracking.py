@@ -11,6 +11,7 @@ def test_mark_entitlement_kicked_records_exact_time() -> None:
         status=EntitlementStatus.active,
         kicked_at=None,
         retention_next_message_at=kicked_at,
+        retention_next_message_index=2,
         review_mailing_state="stopped",
         review_mailing_synced_at=kicked_at,
         updated_at=None,
@@ -21,6 +22,7 @@ def test_mark_entitlement_kicked_records_exact_time() -> None:
     assert entitlement.status == EntitlementStatus.inactive
     assert entitlement.kicked_at == kicked_at
     assert entitlement.retention_next_message_at is None
+    assert entitlement.retention_next_message_index == 0
     assert entitlement.review_mailing_state is None
     assert entitlement.review_mailing_synced_at is None
     assert entitlement.updated_at == kicked_at

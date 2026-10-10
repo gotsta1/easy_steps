@@ -36,10 +36,7 @@ def is_club_lifecycle_configured(settings: Settings) -> bool:
     """Return whether at least one lifecycle action can run."""
     return _has_bothelp_credentials(settings) and bool(
         settings.BOTHELP_STEP_REVIEW_MAILING_STOP
-        or (
-            settings.BOTHELP_STEP_RETENTION_OFFER
-            and settings.BOTHELP_STEP_RETENTION_USED
-        )
+        or (all(settings.retention_offer_steps) and all(settings.retention_used_steps))
     )
 
 
@@ -244,11 +241,13 @@ async def _trigger_retention_message(
         return False
 
     offer_available = (entitlement.retention_offers or 0) == 0
-    step_referral = (
-        settings.BOTHELP_STEP_RETENTION_OFFER
+    steps = (
+        settings.retention_offer_steps
         if offer_available
-        else settings.BOTHELP_STEP_RETENTION_USED
+        else settings.retention_used_steps
     )
+    next_index = entitlement.retention_next_message_index or 0
+    step_referral = steps[next_index]
 
     try:
         await client.trigger_bot_step(
@@ -268,6 +267,7 @@ async def _trigger_retention_message(
 
     sent_at = utcnow()
     entitlement.retention_message_sent_at = sent_at
+    entitlement.retention_next_message_index = (next_index + 1) % len(steps)
     entitlement.retention_next_message_at = random_retention_send_at(
         sent_at,
         settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
@@ -347,8 +347,8 @@ async def run_club_lifecycle_batch(settings: Settings) -> tuple[int, int]:
         retention_candidates: list[tuple[Entitlement, User]] = []
         if (
             remaining > 0
-            and settings.BOTHELP_STEP_RETENTION_OFFER
-            and settings.BOTHELP_STEP_RETENTION_USED
+            and all(settings.retention_offer_steps)
+            and all(settings.retention_used_steps)
         ):
             retention_candidates = await repo.get_pending_retention_messages(
                 first_send_cutoff,

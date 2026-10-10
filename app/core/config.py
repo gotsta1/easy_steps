@@ -56,7 +56,11 @@ class Settings(BaseSettings):
     BOTHELP_STATUS_SYNC_BATCH_SIZE: int = 50
     BOTHELP_STEP_REVIEW_MAILING_STOP: str = ""
     BOTHELP_STEP_RETENTION_OFFER: str = ""
+    BOTHELP_STEP_RETENTION_OFFER_2: str = ""
+    BOTHELP_STEP_RETENTION_OFFER_3: str = ""
     BOTHELP_STEP_RETENTION_USED: str = ""
+    BOTHELP_STEP_RETENTION_USED_2: str = ""
+    BOTHELP_STEP_RETENTION_USED_3: str = ""
     BOTHELP_RETENTION_DELAY_HOURS: int = 168
     BOTHELP_RETENTION_REPEAT_MIN_DAYS: int = 2
     BOTHELP_RETENTION_REPEAT_MAX_DAYS: int = 4
@@ -66,6 +70,22 @@ class Settings(BaseSettings):
     BOTHELP_REVIEW_BACKLOG_INTERVAL_SECONDS: int = 60
     BOTHELP_REVIEW_BATCH_SIZE: int = 50
     BOTHELP_WEBHOOK_PATH: str = "/bothelp/webhook"
+
+    @property
+    def retention_offer_steps(self) -> tuple[str, str, str]:
+        return (
+            self.BOTHELP_STEP_RETENTION_OFFER,
+            self.BOTHELP_STEP_RETENTION_OFFER_2,
+            self.BOTHELP_STEP_RETENTION_OFFER_3,
+        )
+
+    @property
+    def retention_used_steps(self) -> tuple[str, str, str]:
+        return (
+            self.BOTHELP_STEP_RETENTION_USED,
+            self.BOTHELP_STEP_RETENTION_USED_2,
+            self.BOTHELP_STEP_RETENTION_USED_3,
+        )
 
     # ── Lava.top ─────────────────────────────────────────────────────────────
     LAVA_WEBHOOK_PATH: str = "/lava/webhook"

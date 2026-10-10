@@ -97,6 +97,10 @@ class Entitlement(Base):
     retention_next_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Zero-based position of the next message in the current three-step cycle.
+    retention_next_message_index: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     retention_offers: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )

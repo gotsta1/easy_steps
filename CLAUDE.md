@@ -91,6 +91,8 @@ Relevant fields:
 - `active_until`: UTC expiry; `NULL` means lifetime;
 - `kicked_at`: actual successful Telegram kick time for the current expired access cycle;
 - `retention_message_sent_at`: last confirmed retention-step trigger;
+- `retention_next_message_index`: zero-based position of the next message in the
+  current three-message retention cycle;
 - `retention_offers`: paid retention offers (`0` or `1`);
 - `duration_days`: original/most recently applied plan length;
 - notification delivery markers;
@@ -255,10 +257,16 @@ The club-lifecycle worker gives active-user mailing cleanup priority. Seven days
 hours) after an actual successful Telegram kick, it starts retention messages while club
 access remains inactive. Repeats are persisted at a random time 2–4 calendar days later,
 between 06:00 and 24:00 Moscow time. Users with `retention_offers=0`
-receive `BOTHELP_STEP_RETENTION_OFFER`; users with `retention_offers=1` receive
-`BOTHELP_STEP_RETENTION_USED`. `retention_next_message_at` stores the randomized delivery
-time, and an older `retention_message_sent_at` does not suppress the first message after
-a later kick.
+receive the three `BOTHELP_STEP_RETENTION_OFFER` steps in order; users with
+`retention_offers=1` receive the three `BOTHELP_STEP_RETENTION_USED` steps in order.
+After the third message the sequence starts again. `retention_next_message_at` stores
+the randomized delivery time; `retention_next_message_index` advances only after a
+successful BotHelp step trigger. Existing inactive users who already received a
+retention message start at the second message after migration `0020`. A new activation
+and kick resets the index so the next cycle starts at the first message of the current
+offer branch. An older `retention_message_sent_at` does not suppress the first message
+after a later kick. Configure all six BotHelp refs before enabling the new retention
+sequence on production.
 
 The BotHelp payment branch passes `plan=retention_1m` through the normal country,
 currency, payment-method, and `/payments/create` flow. The backend verifies eligibility

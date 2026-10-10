@@ -36,6 +36,7 @@ def make_entitlement(
             else None
         ),
         retention_message_sent_at=now if sent else None,
+        retention_next_message_index=0,
         retention_offers=redeemed,
     )
 
@@ -55,7 +56,11 @@ def test_lifecycle_requires_credentials_and_at_least_one_step() -> None:
         BOTHELP_BOT_REFERRAL="bot",
         BOTHELP_STEP_REVIEW_MAILING_STOP="",
         BOTHELP_STEP_RETENTION_OFFER="retention-step",
+        BOTHELP_STEP_RETENTION_OFFER_2="retention-step-2",
+        BOTHELP_STEP_RETENTION_OFFER_3="retention-step-3",
         BOTHELP_STEP_RETENTION_USED="used-step",
+        BOTHELP_STEP_RETENTION_USED_2="used-step-2",
+        BOTHELP_STEP_RETENTION_USED_3="used-step-3",
     )
     missing_steps = Settings.model_construct(
         BOTHELP_CLIENT_ID="client",
@@ -219,11 +224,13 @@ async def test_retention_step_marks_offer_sent_only_after_success() -> None:
     )
     assert entitlement.retention_message_sent_at is not None
     assert entitlement.retention_next_message_at is not None
+    assert entitlement.retention_next_message_index == 1
 
 
 async def test_retention_step_is_retried_after_bothelp_failure() -> None:
     now = datetime.now(timezone.utc)
     entitlement = make_entitlement(now, kicked_hours_ago=169)
+    entitlement.retention_next_message_index = 1
     user = type("User", (), {"telegram_user_id": 123, "bothelp_subscriber_id": 456})()
     settings = Settings.model_construct(
         BOTHELP_BOT_REFERRAL="bot",
@@ -252,6 +259,7 @@ async def test_retention_step_is_retried_after_bothelp_failure() -> None:
     )
     assert entitlement.retention_message_sent_at is None
     assert entitlement.retention_next_message_at is None
+    assert entitlement.retention_next_message_index == 1
 
 
 async def test_existing_retention_user_gets_future_schedule_without_immediate_send() -> None:
@@ -318,3 +326,54 @@ async def test_redeemed_user_receives_regular_retention_step() -> None:
         )
         is True
     )
+
+
+async def test_retention_messages_rotate_per_branch_and_restart_after_new_kick() -> None:
+    now = datetime.now(timezone.utc)
+    entitlement = make_entitlement(now, kicked_hours_ago=200)
+    user = type("User", (), {"telegram_user_id": 123, "bothelp_subscriber_id": 456})()
+    settings = Settings.model_construct(
+        BOTHELP_BOT_REFERRAL="bot",
+        BOTHELP_STEP_RETENTION_OFFER="offer-1",
+        BOTHELP_STEP_RETENTION_OFFER_2="offer-2",
+        BOTHELP_STEP_RETENTION_OFFER_3="offer-3",
+        BOTHELP_STEP_RETENTION_USED="used-1",
+        BOTHELP_STEP_RETENTION_USED_2="used-2",
+        BOTHELP_STEP_RETENTION_USED_3="used-3",
+        BOTHELP_RETENTION_DELAY_HOURS=168,
+        BOTHELP_RETENTION_REPEAT_MIN_DAYS=2,
+        BOTHELP_RETENTION_REPEAT_MAX_DAYS=4,
+        BOTHELP_RETENTION_SEND_START_HOUR_MSK=6,
+        BOTHELP_RETENTION_SEND_END_HOUR_MSK=24,
+    )
+
+    class FakeDB:
+        async def flush(self) -> None:
+            pass
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.sent: list[str] = []
+
+        async def trigger_bot_step(self, **kwargs) -> None:
+            self.sent.append(kwargs["step_referral"])
+
+    client = FakeClient()
+    for expected_next_index in (1, 2, 0, 1):
+        entitlement.retention_next_message_at = now - timedelta(seconds=1)
+        assert await _trigger_retention_message(FakeDB(), settings, client, entitlement, user)
+        assert entitlement.retention_next_message_index == expected_next_index
+
+    assert client.sent == ["offer-1", "offer-2", "offer-3", "offer-1"]
+
+    # A redeemed offer reactivates the club; the next expired cycle starts at step one.
+    from app.main import _mark_entitlement_kicked
+
+    entitlement.status = EntitlementStatus.active
+    entitlement.retention_offers = 1
+    entitlement.active_until = now - timedelta(days=10)
+    entitlement.retention_message_sent_at = now - timedelta(days=10)
+    _mark_entitlement_kicked(entitlement, now - timedelta(days=9))
+    assert entitlement.retention_next_message_index == 0
+    assert await _trigger_retention_message(FakeDB(), settings, client, entitlement, user)
+    assert client.sent[-1] == "used-1"

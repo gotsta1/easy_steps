@@ -180,6 +180,7 @@ class EntitlementService:
             existing.duration_days = None
             existing.kicked_at = None
             existing.retention_next_message_at = None
+            existing.retention_next_message_index = 0
             existing.expiry_notified_days = None
             existing.last_post_kick_hours = None
             existing.updated_at = utcnow()
