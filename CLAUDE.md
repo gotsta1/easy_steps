@@ -364,6 +364,42 @@ unset ADMIN_TOKEN
 - Database/user name: `easysteps`.
 - Backups: `/opt/easy_steps/backups/`.
 
+### Diagnostic log retention
+
+Production Compose uses the `json-file` driver with compressed rotation: app keeps
+eight files of up to 25 MiB each (about 200 MiB total), Caddy keeps five files of
+up to 10 MiB each (about 50 MiB total). Both stdout and stderr remain available
+through `docker compose -f docker-compose.prod.yml logs --since 24h app`.
+Retention is size-based, so a burst of logs can shorten the available history.
+Changing Docker logging options requires recreating the affected container.
+
+Before recreating a container, archive its existing logs with timestamps into
+`/opt/easy_steps/log-archives/` (root-only, gzip). Files there expire after 30 days
+through systemd-tmpfiles; they can be searched with `zgrep` during investigations.
+Do not print complete archives because they can contain personal data.
+
+Install host policy from the tracked files:
+
+```bash
+install -D -m 0644 ops/journald-easysteps.conf /etc/systemd/journald.conf.d/60-easysteps.conf
+install -D -m 0644 ops/tmpfiles-easysteps-logs.conf /etc/tmpfiles.d/easysteps-logs.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/easysteps-logs.conf
+systemctl restart systemd-journald
+```
+
+Journald retains up to 30 days within a 256 MiB persistent budget (64 MiB in
+runtime storage), reserves 1 GiB free space, and keeps the existing log levels.
+Capacity can shorten that history. Archive recent system logs before first
+applying this lower limit.
+
+On 2026-10-30 both `easy_steps-db-1` and `easy_steps-postgres-1` were confirmed
+to use the same volume and data directory while both were running. Do not
+restart/recreate either PostgreSQL container or add logging changes that would
+trigger their recreation during routine deployment. This needs separate
+database maintenance. Their Docker logs are still unbounded. To apply the
+logging-only Compose change, reuse the current image and limit the operation
+to `up -d --no-deps --no-build app caddy`.
+
 Names and deployment state can change. Before acting, verify with read-only commands:
 
 ```bash

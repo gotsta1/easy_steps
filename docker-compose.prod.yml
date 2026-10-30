@@ -1,6 +1,12 @@
 services:
   caddy:
     image: caddy:2-alpine
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
     ports:
       - "80:80"
       - "443:443"
@@ -14,6 +20,12 @@ services:
 
   app:
     build: .
+    logging:
+      driver: json-file
+      options:
+        max-size: "25m"
+        max-file: "8"
+        compress: "true"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://easysteps:${POSTGRES_PASSWORD}@db:5432/easysteps

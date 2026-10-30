@@ -211,3 +211,6 @@ crucial-media*.json
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Production diagnostic archives can contain personal data.
+/log-archives/
