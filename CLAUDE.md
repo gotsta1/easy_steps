@@ -400,6 +400,37 @@ database maintenance. Their Docker logs are still unbounded. To apply the
 logging-only Compose change, reuse the current image and limit the operation
 to `up -d --no-deps --no-build app caddy`.
 
+### Host disk alerts
+
+`ops/disk_monitor.py` runs on the host using the standard library, independently
+of Docker. `easysteps-disk-monitor.timer` checks `/` every five minutes. The
+confirmed policy is occupied disk space >= 75%, not free space < 75% and not RAM.
+The percentage follows `df`, including filesystem-reserved blocks.
+
+Telegram alerts use `@am_moshkin_admin_bot` and go to Telegram ID `905113282`.
+Credentials are in root-only `/etc/easysteps-monitor.env`; the tracked template
+is `ops/disk-monitor.env.example`. Never print that environment file. This bot's
+token also exists in the pre-existing `/opt/backups/tg_backup.sh`.
+
+Send immediately on crossing the threshold, repeat at most once per 24 hours
+while usage remains high, and send recovery once usage falls to <= 70%.
+Confirmed delivery state is stored atomically in
+`/var/lib/easysteps-monitor/disk.json`. Failed sends leave state unchanged and
+are retried on the next timer run. A `--test` invocation sends current readings
+without changing real alert state. Exception logs must never include token URLs.
+
+Install the two tracked systemd units into `/etc/systemd/system/`, create the
+root-only environment file, run `systemctl daemon-reload`, and enable with
+`systemctl enable --now easysteps-disk-monitor.timer`. Check via:
+
+```bash
+systemctl list-timers easysteps-disk-monitor.timer
+systemctl show easysteps-disk-monitor.service -p Result -p ExecMainStatus
+journalctl -u easysteps-disk-monitor.service --since 24h
+```
+
+This is a separate host timer and does not require restarting the bot or DB.
+
 Names and deployment state can change. Before acting, verify with read-only commands:
 
 ```bash

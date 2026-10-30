@@ -1,0 +1,11 @@
+[Unit]
+Description=Check EasySteps disk space every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=10s
+Unit=easysteps-disk-monitor.service
+
+[Install]
+WantedBy=timers.target
