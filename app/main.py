@@ -277,7 +277,7 @@ async def _run_notify_job(settings: Settings) -> None:
     async with AsyncSessionFactory() as db:
         ent_repo = EntitlementRepo(db)
 
-        # Process thresholds from largest to smallest (3, 2 days).
+        # Disjoint remaining-day windows prevent sending outdated reminders.
         for days in sorted(steps_map.keys(), reverse=True):
             step_referral = steps_map[days]
             expiring = await ent_repo.get_expiring_soon(now, days)
@@ -340,8 +340,8 @@ async def _run_notify_job(settings: Settings) -> None:
 
 
 def _should_send_expiry_notification(duration_days: int | None, days_before: int) -> bool:
-    """Notification policy: all plans get 3-day and 2-day reminders."""
-    return days_before in {2, 3}
+    """Notification policy: all plans get 3-day, 2-day, and 1-day reminders."""
+    return days_before in {1, 2, 3}
 
 
 def _should_send_post_kick_notification(

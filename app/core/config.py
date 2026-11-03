@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     BOTHELP_BOT_REFERRAL: str = ""           # referral бота в BotHelp
     BOTHELP_STEP_NOTIFY_3D: str = ""         # step referral: "осталось 3 дня"
     BOTHELP_STEP_NOTIFY_2D: str = ""         # step referral: "осталось 2 дня"
+    BOTHELP_STEP_NOTIFY_1D: str = ""         # step referral: "остался 1 день"
     BOTHELP_STEP_NOTIFY_KICKED_10H: str = ""
     BOTHELP_STEP_NOTIFY_KICKED_3D: str = ""
     BOTHELP_STEP_SUBSCRIPTION_SYNC: str = ""
@@ -137,6 +138,7 @@ class Settings(BaseSettings):
         for days, step in [
             (3, self.BOTHELP_STEP_NOTIFY_3D),
             (2, self.BOTHELP_STEP_NOTIFY_2D),
+            (1, self.BOTHELP_STEP_NOTIFY_1D),
         ]:
             if step:
                 mapping[days] = step

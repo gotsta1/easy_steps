@@ -9,11 +9,12 @@ def test_settings_expose_only_selected_notification_thresholds() -> None:
     settings = Settings.model_construct(
         BOTHELP_STEP_NOTIFY_3D="step-3d",
         BOTHELP_STEP_NOTIFY_2D="step-2d",
+        BOTHELP_STEP_NOTIFY_1D="step-1d",
         BOTHELP_STEP_NOTIFY_KICKED_10H="step-kicked-10h",
         BOTHELP_STEP_NOTIFY_KICKED_3D="step-kicked-3d",
     )
 
-    assert settings.notify_steps_map == {3: "step-3d", 2: "step-2d"}
+    assert settings.notify_steps_map == {3: "step-3d", 2: "step-2d", 1: "step-1d"}
     assert settings.notify_post_kick_hours_map == {
         10: "step-kicked-10h",
         72: "step-kicked-3d",
@@ -24,7 +25,19 @@ def test_only_selected_pre_expiry_notifications_are_enabled() -> None:
     for duration_days in (7, 30, 90, 180, 365, None):
         assert _should_send_expiry_notification(duration_days, 3) is True
         assert _should_send_expiry_notification(duration_days, 2) is True
-        assert _should_send_expiry_notification(duration_days, 1) is False
+        assert _should_send_expiry_notification(duration_days, 1) is True
+        assert _should_send_expiry_notification(duration_days, 0) is False
+        assert _should_send_expiry_notification(duration_days, 7) is False
+
+
+def test_blank_one_day_step_disables_only_that_threshold() -> None:
+    settings = Settings.model_construct(
+        BOTHELP_STEP_NOTIFY_3D="step-3d",
+        BOTHELP_STEP_NOTIFY_2D="step-2d",
+        BOTHELP_STEP_NOTIFY_1D="",
+    )
+
+    assert settings.notify_steps_map == {3: "step-3d", 2: "step-2d"}
 
 
 def test_only_selected_post_kick_notifications_are_enabled() -> None:

@@ -115,17 +115,19 @@ class EntitlementRepo:
         self, now: datetime, days: int
     ) -> list[Entitlement]:
         """
-        Return active entitlements expiring within ``days`` days from ``now``
-        that haven't been notified for this threshold yet.
+        Return club entitlements in the matching remaining-day window,
+        excluding thresholds already delivered in this access cycle.
         """
         from datetime import timedelta
 
         deadline = now + timedelta(days=days)
+        window_start = now + timedelta(days=days - 1)
         result = await self._db.execute(
             select(Entitlement).where(
+                Entitlement.product_key == "club",
                 Entitlement.status == EntitlementStatus.active,
                 Entitlement.active_until.isnot(None),
-                Entitlement.active_until > now,
+                Entitlement.active_until > window_start,
                 Entitlement.active_until <= deadline,
                 sa.or_(
                     Entitlement.expiry_notified_days.is_(None),

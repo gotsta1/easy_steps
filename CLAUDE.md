@@ -240,16 +240,22 @@ Status reconciliation:
 
 ### Expiry notifications
 
-The current configured policy supports only four BotHelp message steps:
+The current configured policy supports five BotHelp notification steps:
 
 - 3 days before club expiry;
 - 2 days before club expiry;
+- 1 day before club expiry (`BOTHELP_STEP_NOTIFY_1D`);
 - 10 hours after the actual successful Telegram kick;
 - 3 days (72 hours) after the actual successful Telegram kick.
 
 Delivery markers in the entitlement prevent repeated threshold delivery. Successful
 renewal/upsert resets the relevant markers. Notifications require a stored BotHelp
 subscriber ID.
+
+Pre-expiry reminders use non-overlapping remaining-time windows: (48h, 72h],
+(24h, 48h], and (0h, 24h]. They are anchored to `active_until`, not the later
+Telegram kick or its grace period. Missed older reminders are not sent together
+with the current threshold. Delivery follows the expiry worker polling interval.
 
 ### Club lifecycle and retention
 
@@ -432,6 +438,9 @@ journalctl -u easysteps-disk-monitor.service --since 24h
 This is a separate host timer and does not require restarting the bot or DB.
 
 Names and deployment state can change. Before acting, verify with read-only commands:
+
+`.dockerignore` excludes runtime credentials, `.env`, backups, and diagnostic archives
+from the image build context. Keep secrets mounted or supplied at runtime.
 
 ```bash
 ssh -o BatchMode=yes root@82.25.61.129 \
