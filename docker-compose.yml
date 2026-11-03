@@ -24,15 +24,15 @@ services:
       POSTGRES_PASSWORD: easysteps
       POSTGRES_DB: easysteps
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U easysteps -d easysteps"]
       interval: 5s
       timeout: 5s
       retries: 10
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_dev:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
-  pgdata:
+  pgdata_dev:

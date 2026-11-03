@@ -42,12 +42,19 @@ services:
 
   db:
     image: postgres:16-alpine
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
     environment:
       POSTGRES_USER: easysteps
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: easysteps
+      POSTGRES_INITDB_ARGS: --data-checksums
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_prod:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U easysteps"]
       interval: 5s
@@ -56,6 +63,8 @@ services:
     restart: always
 
 volumes:
-  pgdata:
+  pgdata_prod:
+    external: true
+    name: easy_steps_pgdata_prod
   caddy_data:
   caddy_config:

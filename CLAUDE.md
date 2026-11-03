@@ -15,8 +15,8 @@ over this document if they disagree, then update this document as part of the ch
 - Perform production data changes in a transaction with `ON_ERROR_STOP=1`, assert the
   expected row count, commit, and then verify through both SQL and the public API.
 - Do not remove Docker volumes, recreate the database, run `docker compose down -v`, or
-  remove orphan containers without proving they are disposable. An orphan PostgreSQL
-  container has existed on the host; do not touch it as part of routine deployment.
+  remove orphan containers without proving they are disposable. The retired shared
+  PostgreSQL volume must not be mounted into another running server.
 - Never rewrite or reset production Git history. Deploy only committed code using a
   fast-forward pull. Migrations must run with `alembic upgrade head`.
 - Do not alter unrelated local changes. Stop and ask if unexpected changes appear while
@@ -373,8 +373,8 @@ unset ADMIN_TOKEN
 ### Diagnostic log retention
 
 Production Compose uses the `json-file` driver with compressed rotation: app keeps
-eight files of up to 25 MiB each (about 200 MiB total), Caddy keeps five files of
-up to 10 MiB each (about 50 MiB total). Both stdout and stderr remain available
+eight files of up to 25 MiB each (about 200 MiB total), Caddy and PostgreSQL each
+keep five files of up to 10 MiB each (about 50 MiB total). Both stdout and stderr remain available
 through `docker compose -f docker-compose.prod.yml logs --since 24h app`.
 Retention is size-based, so a burst of logs can shorten the available history.
 Changing Docker logging options requires recreating the affected container.
@@ -398,13 +398,26 @@ runtime storage), reserves 1 GiB free space, and keeps the existing log levels.
 Capacity can shorten that history. Archive recent system logs before first
 applying this lower limit.
 
-On 2026-10-30 both `easy_steps-db-1` and `easy_steps-postgres-1` were confirmed
-to use the same volume and data directory while both were running. Do not
-restart/recreate either PostgreSQL container or add logging changes that would
-trigger their recreation during routine deployment. This needs separate
-database maintenance. Their Docker logs are still unbounded. To apply the
-logging-only Compose change, reuse the current image and limit the operation
-to `up -d --no-deps --no-build app caddy`.
+### PostgreSQL Storage Isolation
+
+Production uses the external volume `easy_steps_pgdata_prod`, mounted only by
+`easy_steps-db-1`. On a new host, provision it explicitly before starting Compose:
+
+```bash
+docker volume create easy_steps_pgdata_prod
+```
+
+It is external so Compose does not own its deletion lifecycle. The production
+database has no published host port. Local development uses a different volume,
+`pgdata_dev`, and publishes PostgreSQL only on `127.0.0.1`. New production clusters
+are initialized with data checksums enabled.
+
+Before the 2026-11-03 migration, production `db` and a leftover development
+`postgres` server both wrote to `easy_steps_pgdata`. The second server exposed
+port 5432 publicly and returned a system-catalog TOAST read error. That old volume
+is retained for recovery/forensics only. Never start a server on it or silently
+point production back at it. Recovery must restore a validated logical dump into
+a fresh, isolated volume. Do not infer data consistency from container health.
 
 ### Host disk alerts
 
