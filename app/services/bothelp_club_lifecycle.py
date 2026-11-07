@@ -240,6 +240,32 @@ async def _trigger_retention_message(
     ):
         return False
 
+    last_sent_at = entitlement.retention_message_sent_at
+    anchor = _retention_anchor(entitlement, settings.KICK_GRACE_SECONDS)
+    if last_sent_at is not None and anchor is not None and last_sent_at >= anchor:
+        earliest_repeat = datetime.combine(
+            last_sent_at.astimezone(MOSCOW_TZ).date()
+            + timedelta(days=settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS),
+            time(hour=settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK),
+            tzinfo=MOSCOW_TZ,
+        )
+        if now < earliest_repeat:
+            # Previously persisted two-day schedules must respect the new minimum.
+            entitlement.retention_next_message_at = random_retention_send_at(
+                last_sent_at,
+                settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
+                settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
+                settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
+                settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
+            )
+            await db.flush()
+            logger.info(
+                "retention_message_rescheduled tg_id=%d next_at=%s",
+                user.telegram_user_id,
+                entitlement.retention_next_message_at.isoformat(),
+            )
+            return False
+
     offer_available = (entitlement.retention_offers or 0) == 0
     steps = (
         settings.retention_offer_steps

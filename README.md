@@ -166,10 +166,10 @@ Required:
   the `club_subscription_status` subscriber field
 - `BOTHELP_STEP_REVIEW_MAILING_STOP` — technical BotHelp step that removes an
   active club member from inactive-user mailings
-- `BOTHELP_STEP_RETENTION_OFFER` — discounted retention message starting 168
+- `BOTHELP_STEP_RETENTION_OFFER` — discounted retention message starting 288
   hours after the user's successful Telegram kick
 - `BOTHELP_STEP_RETENTION_USED` — regular retention message for users who have
-  already redeemed the discount; repeats are randomly scheduled 2–4 calendar
+  already redeemed the discount; repeats are randomly scheduled 3–4 calendar
   days later between 06:00 and 24:00 Moscow time while access remains inactive
 
 ---

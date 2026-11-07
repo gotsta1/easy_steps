@@ -259,9 +259,9 @@ with the current threshold. Delivery follows the expiry worker polling interval.
 
 ### Club lifecycle and retention
 
-The club-lifecycle worker gives active-user mailing cleanup priority. Seven days (168
+The club-lifecycle worker gives active-user mailing cleanup priority. Twelve days (288
 hours) after an actual successful Telegram kick, it starts retention messages while club
-access remains inactive. Repeats are persisted at a random time 2–4 calendar days later,
+access remains inactive. Repeats are persisted at a random time 3–4 calendar days later,
 between 06:00 and 24:00 Moscow time. Users with `retention_offers=0`
 receive the three `BOTHELP_STEP_RETENTION_OFFER` steps in order; users with
 `retention_offers=1` receive the three `BOTHELP_STEP_RETENTION_USED` steps in order.
@@ -273,6 +273,11 @@ and kick resets the index so the next cycle starts at the first message of the c
 offer branch. An older `retention_message_sent_at` does not suppress the first message
 after a later kick. Configure all six BotHelp refs before enabling the new retention
 sequence on production.
+
+When processing a due repeat saved under the old two-day policy, the worker postpones
+it if the new minimum Moscow calendar date/time has not arrived. This preserves the
+message index and last-send marker and does not trigger an immediate resend. The
+12-day first-send cutoff also applies to existing users; no new DB migration is needed.
 
 The BotHelp payment branch passes `plan=retention_1m` through the normal country,
 currency, payment-method, and `/payments/create` flow. The backend verifies eligibility
