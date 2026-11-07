@@ -1,4 +1,4 @@
-"""Durable delivery of paid Tanya invoices to Google Sheets."""
+"""Durable delivery of paid referral invoices to Google Sheets."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ def is_gsheet_configured(settings: Settings) -> bool:
         settings.GSHEET_CREDENTIALS_PATH
         and settings.GSHEET_SPREADSHEET_ID
         and settings.GSHEET_SHEET_NAME
+        and settings.GSHEET_REF
     )
 
 
@@ -77,7 +78,7 @@ async def run_delivery_batch(settings: Settings) -> int:
     for _ in range(settings.GSHEET_RETRY_BATCH_SIZE):
         async with AsyncSessionFactory() as db:
             repo = PendingInvoiceRepo(db)
-            invoice = await repo.get_next_gsheet_pending()
+            invoice = await repo.get_next_gsheet_pending(settings.GSHEET_REF)
             if invoice is None:
                 return delivered
 

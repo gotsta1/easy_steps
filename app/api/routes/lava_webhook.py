@@ -203,7 +203,7 @@ async def lava_webhook_handler(
         should_sync_status = product_key == CLUB_PRODUCT_KEY
 
         # Try immediately. A failure is persisted and retried by the worker.
-        if pending and pending.ref == "tanya":
+        if pending and settings.GSHEET_REF and pending.ref == settings.GSHEET_REF:
             from app.services.gsheet_delivery import (
                 deliver_invoice,
                 is_gsheet_configured,

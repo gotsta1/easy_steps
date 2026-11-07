@@ -333,13 +333,13 @@ class PendingInvoiceRepo:
             await self._db.flush()
         return inv
 
-    async def get_next_gsheet_pending(self) -> PendingInvoice | None:
-        """Lock and return one undelivered paid Tanya invoice."""
+    async def get_next_gsheet_pending(self, referral: str) -> PendingInvoice | None:
+        """Lock and return one undelivered paid invoice for this referral."""
         result = await self._db.execute(
             select(PendingInvoice)
             .where(
                 PendingInvoice.paid.is_(True),
-                PendingInvoice.ref == "tanya",
+                PendingInvoice.ref == referral,
                 PendingInvoice.gsheet_recorded_at.is_(None),
             )
             .order_by(PendingInvoice.gsheet_attempts, PendingInvoice.id)

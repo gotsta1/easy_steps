@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.db.models import PendingInvoice
+from app.db.repo import PendingInvoiceRepo
 from app.services import gsheet_delivery
 
 
@@ -29,7 +34,40 @@ def settings() -> SimpleNamespace:
         GSHEET_CREDENTIALS_PATH="credentials.json",
         GSHEET_SPREADSHEET_ID="spreadsheet",
         GSHEET_SHEET_NAME="Sales",
+        GSHEET_REF="ref_ref",
+        GSHEET_RETRY_BATCH_SIZE=50,
     )
+
+
+@pytest.mark.parametrize("referral", ["ref_ref", "tanya"])
+async def test_delivery_query_filters_paid_undelivered_matching_referral(referral):
+    db = AsyncMock()
+    db.execute.return_value = MagicMock()
+    await PendingInvoiceRepo(db).get_next_gsheet_pending(referral)
+    query = db.execute.call_args.args[0]
+    sql = str(query.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    assert f"pending_invoices.ref = '{referral}'" in sql
+    assert "pending_invoices.paid IS true" in sql
+    assert "pending_invoices.gsheet_recorded_at IS NULL" in sql
+    assert "FOR UPDATE SKIP LOCKED" in sql
+
+
+async def test_worker_passes_configured_referral(monkeypatch):
+    db = AsyncMock()
+    db.__aenter__.return_value = db
+    monkeypatch.setattr(gsheet_delivery, "AsyncSessionFactory", lambda: db)
+    query = AsyncMock(return_value=None)
+    monkeypatch.setattr(PendingInvoiceRepo, "get_next_gsheet_pending", query)
+
+    assert await gsheet_delivery.run_delivery_batch(settings()) == 0
+    query.assert_awaited_once_with("ref_ref")
+
+
+def test_blank_referral_disables_sheets_delivery():
+    configured = settings()
+    assert gsheet_delivery.is_gsheet_configured(configured) is True
+    configured.GSHEET_REF = ""
+    assert gsheet_delivery.is_gsheet_configured(configured) is False
 
 
 async def test_deliver_invoice_marks_success(monkeypatch) -> None:

@@ -162,7 +162,7 @@ Lava calls the configured webhook using Basic Auth.
 5. On success, mark the invoice paid and activate/extend the entitlement.
 6. Commit club changes before triggering BotHelp status synchronization.
 7. Stop an active user from inactive-user mailings after a successful club purchase.
-8. If `pending.ref == "tanya"`, attempt Google Sheets delivery immediately; failures are
+8. If `pending.ref == settings.GSHEET_REF`, attempt Google Sheets delivery immediately; failures are
    persisted for retry.
 
 The webhook intentionally returns HTTP 200-style JSON outcomes for many unmatched or
@@ -292,7 +292,15 @@ current club status, expiry, kick time, or retention-message history.
 
 ### Google Sheets
 
-Only successfully paid pending invoices whose exact referral is `tanya` are eligible.
+Only successfully paid pending invoices whose exact referral matches `GSHEET_REF` are
+eligible, both in the immediate webhook delivery and the retry worker. The setting defaults
+to `tanya` for backwards compatibility; the new production target uses `ref_ref`.
+BotHelp still sends `"ref": "{%reff%}"` to `/payments/create`: `reff` is only the BotHelp
+subscriber field, not a new backend request field.
+The production spreadsheet is `17VZh_StM_cCUesx-oEX6nVYd_xkbtIX7etkzh03aFCc`, worksheet
+`Сумма выплат` (gid `0`). The service account has editor access only to this restricted
+spreadsheet; do not make it public. Switching the target does not clear old delivery
+markers or automatically backfill already exported payments.
 Rows are appended; deleted rows are not recreated after `gsheet_recorded_at` has been set.
 The hidden column H contains `Invoice ID` and is used for deduplication. Payment date/time
 uses Lava's payment timestamp when available and is formatted in UTC+3.
