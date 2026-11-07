@@ -363,6 +363,11 @@ unset ADMIN_TOKEN
 - Public URL: `https://esyaaaaa.online`
 - VPS SSH target: `root@82.25.61.129`
 - Authentication: SSH key, not password.
+- From this Mac, use `ssh -i ~/.ssh/id_ed25519 -o UseKeychain=yes -o BatchMode=yes
+  root@82.25.61.129`. The key is passphrase-protected and macOS Keychain supplies
+  the unlock credential. An empty SSH agent does not mean the server rejects the
+  key; authentication was reverified with this command on 2026-11-07. Never print
+  the private key or its passphrase.
 - Project directory: `/opt/easy_steps`
 - Compose file: `/opt/easy_steps/docker-compose.prod.yml`
 - Application container is normally `easy_steps-app-1`.
@@ -400,8 +405,30 @@ applying this lower limit.
 
 ### PostgreSQL Storage Isolation
 
-Production uses the external volume `easy_steps_pgdata_prod`, mounted only by
-`easy_steps-db-1`. On a new host, provision it explicitly before starting Compose:
+The production cutover completed on 2026-11-07. The application was unavailable
+from 11:39:02 to 11:40:23 UTC (about 81 seconds). A fresh final dump, not the old
+staging snapshot, was restored in one transaction. All public table contents and
+sequence values matched the source before the application was restarted; an
+offline physical checksum check reported zero bad checksums. Query statistics
+were rebuilt with `ANALYZE`; public indexes were valid.
+
+Production now runs one PostgreSQL container, `easy_steps-db-1`, using the external
+volume `easy_steps_pgdata_prod`. The former development PostgreSQL and temporary
+staging containers were stopped and removed without deleting either named volume.
+No PostgreSQL port is published on the host.
+
+Recovery and audit materials are root-only:
+
+- Final source dump: `/opt/easy_steps/backups/pre_postgres_cutover_final_20261107T113341Z.dump`.
+- Verified new-server dump: `/opt/easy_steps/backups/post_postgres_cutover_20261107T113341Z.dump`.
+- Cutover state, scripts, row fingerprints, and saved container metadata:
+  `/opt/easy_steps/backups/postgres_cutover_resume_20261107T113341Z/`.
+- Historical preparation state: `/opt/easy_steps/backups/postgres_cutover_20261103T121950Z/state.json`.
+
+Saved container metadata and role dumps contain credentials; never print or commit
+their contents. The nightly Telegram backup still targets `easy_steps-db-1` and
+therefore uses the new server. On a new host, provision the external volume before
+starting Compose:
 
 ```bash
 docker volume create easy_steps_pgdata_prod
@@ -412,12 +439,13 @@ database has no published host port. Local development uses a different volume,
 `pgdata_dev`, and publishes PostgreSQL only on `127.0.0.1`. New production clusters
 are initialized with data checksums enabled.
 
-Before the 2026-11-03 migration, production `db` and a leftover development
+During the 2026-11-03 investigation, production `db` and a leftover development
 `postgres` server both wrote to `easy_steps_pgdata`. The second server exposed
 port 5432 publicly and returned a system-catalog TOAST read error. That old volume
-is retained for recovery/forensics only. Never start a server on it or silently
-point production back at it. Recovery must restore a validated logical dump into
-a fresh, isolated volume. Do not infer data consistency from container health.
+is retained for recovery/forensics only. Do not start additional servers on it or
+silently point production back at it after migration.
+Recovery must restore a validated logical dump into a fresh, isolated volume. Do
+not infer data consistency from container health.
 
 ### Host disk alerts
 
