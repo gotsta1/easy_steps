@@ -294,7 +294,10 @@ current club status, expiry, kick time, or retention-message history.
 
 Only successfully paid pending invoices whose exact referral matches `GSHEET_REF` are
 eligible, both in the immediate webhook delivery and the retry worker. The setting defaults
-to `tanya` for backwards compatibility; the new production target uses `ref_ref`.
+to `ref_ref`, matching the production target. Migration `0021` replaces the old
+source-specific index with a partial index on `(ref, gsheet_attempts, id)` for all paid,
+undelivered invoices. It supports the configured filter and retry ordering without
+embedding a referral in the index predicate. Historical migration `0013` stays unchanged.
 BotHelp still sends `"ref": "{%reff%}"` to `/payments/create`: `reff` is only the BotHelp
 subscriber field, not a new backend request field.
 The production spreadsheet is `17VZh_StM_cCUesx-oEX6nVYd_xkbtIX7etkzh03aFCc`, worksheet

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
+from app.core.config import Settings
 from app.db.models import PendingInvoice
 from app.db.repo import PendingInvoiceRepo
 from app.services import gsheet_delivery
@@ -24,7 +25,7 @@ def make_invoice() -> PendingInvoice:
         amount_rub=329,
         first_name="Олеся",
         cuid="cmoi.aj9",
-        ref="tanya",
+        ref="ref_ref",
         gsheet_attempts=0,
     )
 
@@ -37,6 +38,10 @@ def settings() -> SimpleNamespace:
         GSHEET_REF="ref_ref",
         GSHEET_RETRY_BATCH_SIZE=50,
     )
+
+
+def test_sheets_referral_defaults_to_current_source():
+    assert Settings.model_construct().GSHEET_REF == "ref_ref"
 
 
 @pytest.mark.parametrize("referral", ["ref_ref", "tanya"])

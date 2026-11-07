@@ -159,6 +159,13 @@ class PendingInvoice(Base):
     """Maps a Lava invoice ID to the Telegram user who initiated payment."""
 
     __tablename__ = "pending_invoices"
+    __table_args__ = (
+        Index(
+            "ix_pending_invoices_gsheet_pending",
+            "ref", "gsheet_attempts", "id",
+            postgresql_where=sa.text("paid IS TRUE AND gsheet_recorded_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     lava_invoice_id: Mapped[str] = mapped_column(
