@@ -16,7 +16,7 @@ from app.core.time import utcnow
 from app.db.models import Entitlement, EntitlementStatus, User
 from app.db.repo import EntitlementRepo
 from app.db.session import AsyncSessionFactory
-from app.services.bothelp_api import BotHelpAPIError, BotHelpClient
+from app.services.bothelp_api import BotHelpAPIError, BotHelpClient, get_bothelp_client
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +341,7 @@ async def sync_active_user_mailing_cleanup(
     if not is_active_club(entitlement, utcnow()):
         return False
     if client is None:
-        client = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
+        client = get_bothelp_client()
     # Always trigger after activation because the BotHelp step may gain new
     # mailings after a user's previous synchronization.
     return await _trigger_active_cleanup(db, settings, client, entitlement, user)
@@ -357,7 +357,7 @@ async def run_club_lifecycle_batch(settings: Settings) -> tuple[int, int]:
     historical_first_send_cutoff = first_send_cutoff - timedelta(
         seconds=settings.KICK_GRACE_SECONDS
     )
-    client = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
+    client = get_bothelp_client()
     synced = 0
 
     async with AsyncSessionFactory() as db:

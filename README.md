@@ -162,8 +162,9 @@ Required:
   one-time `retention_1m` payment plan
 - `DATABASE_URL` — PostgreSQL connection string
 - `APP_PUBLIC_BASE_URL` — public HTTPS URL for webhook registration
-- `BOTHELP_STEP_SUBSCRIPTION_SYNC` — technical BotHelp step that refreshes
-  the `club_subscription_status` subscriber field
+- `BOTHELP_CHANNEL_ID` — BotHelp Telegram channel identity used to verify subscriber mappings
+- `BOTHELP_SUBSCRIPTION_STATUS_FIELD` — field updated directly via API (default:
+  `club_subscription_status`), without launching a bot flow
 - `BOTHELP_STEP_REVIEW_MAILING_STOP` — technical BotHelp step that removes an
   active club member from inactive-user mailings
 - `BOTHELP_STEP_RETENTION_OFFER` — discounted retention message starting 288

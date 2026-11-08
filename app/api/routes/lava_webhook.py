@@ -222,8 +222,7 @@ async def lava_webhook_handler(
         should_sync_status = product_key == CLUB_PRODUCT_KEY
 
     if should_sync_status:
-        # BotHelp's technical step immediately calls /subscriptions/status.
-        # Commit first so that request cannot observe the previous entitlement.
+        # Commit access before synchronizing the subscriber field or cleaning mailings.
         await db.commit()
         await sync_telegram_user_status(db, settings, telegram_user_id)
         if action == "payment_success":

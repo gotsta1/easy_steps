@@ -134,6 +134,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             pass
 
     await bot.session.close()
+    from app.services.bothelp_api import get_bothelp_client
+    if get_bothelp_client.cache_info().currsize:
+        await get_bothelp_client().aclose()
+        get_bothelp_client.cache_clear()
     logger.info("app_shutdown_complete")
 
 
@@ -263,14 +267,14 @@ async def _run_notify_job(settings: Settings) -> None:
     from app.db.models import User
     from app.db.repo import EntitlementRepo
     from app.db.session import AsyncSessionFactory
-    from app.services.bothelp_api import BotHelpClient, BotHelpAPIError
+    from app.services.bothelp_api import get_bothelp_client, BotHelpAPIError
 
     steps_map = settings.notify_steps_map
     post_kick_hours_map = settings.notify_post_kick_hours_map
     if (not steps_map and not post_kick_hours_map) or not settings.BOTHELP_CLIENT_ID:
         return  # notifications not configured
 
-    bothelp = BotHelpClient(settings.BOTHELP_CLIENT_ID, settings.BOTHELP_CLIENT_SECRET)
+    bothelp = get_bothelp_client()
     now = utcnow()
     total_sent = 0
 

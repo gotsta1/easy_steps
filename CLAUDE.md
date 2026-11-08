@@ -224,19 +224,40 @@ itself prove a paid invoice exists; manual or historical access may also create 
 
 ### BotHelp subscriber mapping and status sync
 
-The BotHelp webhook stores the Telegram ID to BotHelp subscriber-ID mapping. A changed
-mapping invalidates the previously synced status and triggers an immediate refresh.
+The BotHelp webhook verifies the subscriber against the official export API before
+storing a mapping: both the Telegram ID and `BOTHELP_CHANNEL_ID` must match. Names,
+email addresses and nearby numeric IDs are never used as identity evidence. A changed
+mapping invalidates cached status and active-user mailing cleanup. Migration `0022`
+enforces unique non-null subscriber IDs; clean historical duplicate mappings before
+running that migration. Concurrent Telegram user creation uses INSERT ON CONFLICT.
 
-The technical BotHelp synchronization step calls `/subscriptions/status` and maps
-`subscription_status` into the BotHelp subscriber field `club_subscription_status`.
+Status sync writes `BOTHELP_SUBSCRIPTION_STATUS_FIELD` (default `club_subscription_status`)
+through PATCH `/v1/subscribers/{id}/customFields`. It requires a positive `success=true`
+response, not merely HTTP 200 or acceptance of a flow launch. It does not launch the
+old technical synchronization step or interrupt the subscriber's current bot flow.
+The public API does not expose a field read-back method: distinguish a confirmed write
+response from an independently reread value.
 
 Status reconciliation:
 
 - immediately after successful/canceled club events and BotHelp ID mapping;
 - periodically in batches (production defaults are represented in `.env.example`);
 - shorter polling interval while a full batch indicates backlog;
-- only users whose desired status differs from the last confirmed status cause external
-  BotHelp requests.
+- changed states are prioritized, with active club users first;
+- club users also receive a direct field refresh every 24 hours to repair external drift;
+- identity directory reconciliation runs in the existing status loop every six hours,
+  using a complete, channel-scoped export. Empty, failed, ambiguous, non-advancing or
+  suspiciously truncated snapshots must not overwrite working mappings;
+- missing/recreated profiles are rebound only after exact identity verification;
+- `bothelp_mapping_verified_at` stores identity validation time and
+  `bothelp_status_next_retry_at` persists failure backoff; 404s retry no earlier than
+  one hour. Confirmed field writes clear consecutive failure counts;
+- a shared OAuth/HTTP client rate-limits requests and retries only idempotent GET/PATCH;
+  message-triggering POSTs are never automatically repeated after an uncertain failure.
+
+Production BotHelp channel identity is `8373474846`; it is not the private Telegram
+workout channel ID. Account `1590698404` had active access but no matching BotHelp profile
+in the 2026-11-08 directory; never fabricate a subscriber mapping for it.
 
 ### Expiry notifications
 
@@ -539,8 +560,9 @@ the grant represented as a payment. Entitlements and payment history are separat
 
 - `/payments/check` ignores its optional `invoice_id` and checks any active entitlement.
 - Background jobs run inside the web process and are unsafe with uncoordinated replicas.
-- The BotHelp webhook route does not currently show independent authentication in its
-  handler; evaluate this before exposing additional mutation behavior through it.
+- The BotHelp webhook independently verifies identity through the official API but does
+  not have a separate shared-secret authentication layer. Do not expose additional
+  entitlement/payment mutation behavior through it without authentication.
 - Payment request bodies are logged (truncated) by middleware. Avoid adding secrets or
   sensitive personal data to these bodies, and consider structured redaction.
 - CORS currently allows all origins.

@@ -6,6 +6,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
 
 from app.core.time import utcnow
 from app.db.models import Entitlement, EntitlementStatus, LavaEvent, PendingInvoice, User
@@ -33,9 +34,17 @@ class UserRepo:
         user = await self.get_by_telegram_id(telegram_user_id)
         if user:
             return user, False
-        user = User(telegram_user_id=telegram_user_id)
-        self._db.add(user)
-        await self._db.flush()
+        result = await self._db.execute(
+            insert(User).values(telegram_user_id=telegram_user_id)
+            .on_conflict_do_nothing(index_elements=[User.telegram_user_id])
+            .returning(User)
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            user = await self.get_by_telegram_id(telegram_user_id)
+            if user is None:
+                raise RuntimeError("Concurrent user creation did not yield a user")
+            return user, False
         logger.info("user_created telegram_user_id=%d", telegram_user_id)
         return user, True
 

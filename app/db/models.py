@@ -28,6 +28,9 @@ class EntitlementStatus(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("bothelp_subscriber_id", name="uq_users_bothelp_subscriber_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     telegram_user_id: Mapped[int] = mapped_column(
@@ -36,7 +39,7 @@ class User(Base):
     bothelp_subscriber_id: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
-    # Last subscription status whose BotHelp sync step was accepted.
+    # Last subscription status whose direct BotHelp field update was confirmed.
     # NULL means the subscriber still needs an initial sync.
     bothelp_subscription_status: Mapped[str | None] = mapped_column(
         Text, nullable=True, default=None
@@ -48,6 +51,12 @@ class User(Base):
         Text, nullable=True, default=None
     )
     bothelp_status_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    bothelp_mapping_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    bothelp_status_next_retry_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
