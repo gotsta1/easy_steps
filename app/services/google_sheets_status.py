@@ -67,7 +67,7 @@ def report_values(rows: list[StatusRow], now: datetime) -> list[list]:
 def _cell(value) -> dict:
     if isinstance(value, datetime):
         # Sheets serials are local wall-clock dates; the workbook timezone is not changed.
-        serial = (value.astimezone(MSK).replace(tzinfo=None)
+        serial = (value.astimezone(MSK).replace(tzinfo=None, microsecond=0)
                   - datetime(1899, 12, 30)).total_seconds() / 86400
         return {"userEnteredValue": {"numberValue": serial}, "userEnteredFormat": {
             "numberFormat": {"type": "DATE_TIME", "pattern": "dd.mm.yyyy hh:mm:ss"},

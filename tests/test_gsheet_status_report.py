@@ -210,6 +210,10 @@ def test_report_summary_and_dates():
     assert sheet_api._cell("123")["userEnteredValue"] == {"stringValue": "123"}
 
 
+def test_sheet_dates_drop_fractional_seconds_instead_of_rounding_forward():
+    assert sheet_api._cell(NOW.replace(microsecond=900000)) == sheet_api._cell(NOW)
+
+
 @pytest.mark.parametrize("num_users", [0, 2, 1500])
 def test_atomic_replacement_clears_stale_rows_and_scopes_every_request(num_users):
     values = sheet_api.report_values([report.StatusRow(i, True, None, None) for i in range(num_users)], NOW)
