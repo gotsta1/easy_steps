@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -166,6 +166,14 @@ class Settings(BaseSettings):
     GSHEET_REF: str = "ref_ref"       # exact pending_invoices.ref eligible for export
     GSHEET_RETRY_INTERVAL_SECONDS: int = 300
     GSHEET_RETRY_BATCH_SIZE: int = 50
+    GSHEET_STATUS_SHEET_ID: int | None = Field(default=None, ge=0)
+    GSHEET_STATUS_SHEET_NAME: str = "Пользователи и статусы"
+    GSHEET_STATUS_UPDATE_HOUR_MSK: int = Field(default=6, ge=0, le=23)
+
+    @field_validator("GSHEET_STATUS_SHEET_ID", mode="before")
+    @classmethod
+    def blank_status_sheet_disables_report(cls, value):
+        return None if value == "" else value
 
     # ── Admin ────────────────────────────────────────────────────────────────
     ADMIN_TOKEN: str

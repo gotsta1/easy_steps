@@ -56,8 +56,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
 
     from app.services.gsheet_delivery import delivery_loop, is_gsheet_configured
+    from app.services.gsheet_status_report import is_status_report_configured
 
-    if is_gsheet_configured(settings):
+    if is_gsheet_configured(settings) or is_status_report_configured(settings):
         gsheet_task = asyncio.create_task(delivery_loop(settings))
         app.state.gsheet_task = gsheet_task
         logger.info(
@@ -65,6 +66,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             settings.GSHEET_RETRY_INTERVAL_SECONDS,
             settings.GSHEET_RETRY_BATCH_SIZE,
         )
+        if is_status_report_configured(settings):
+            logger.info(
+                "gsheet_status_report_enabled sheet_id=%d update_hour_msk=%d",
+                settings.GSHEET_STATUS_SHEET_ID,
+                settings.GSHEET_STATUS_UPDATE_HOUR_MSK,
+            )
 
     from app.services.bothelp_status_sync import (
         is_bothelp_status_sync_configured,

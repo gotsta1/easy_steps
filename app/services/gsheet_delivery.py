@@ -12,6 +12,7 @@ from app.db.models import PendingInvoice
 from app.db.repo import PendingInvoiceRepo
 from app.db.session import AsyncSessionFactory
 from app.services.google_sheets import append_sale
+from app.services.gsheet_status_report import StatusReportJob
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +95,14 @@ async def run_delivery_batch(settings: Settings) -> int:
 
 async def delivery_loop(settings: Settings) -> None:
     """Process pending rows immediately on startup, then periodically."""
+    report = StatusReportJob(settings)
     while True:
-        try:
-            delivered = await run_delivery_batch(settings)
-            if delivered:
-                logger.info("gsheet_delivery_batch_complete delivered=%d", delivered)
-        except Exception:
-            logger.exception("gsheet_delivery_job_error")
+        if is_gsheet_configured(settings):
+            try:
+                delivered = await run_delivery_batch(settings)
+                if delivered:
+                    logger.info("gsheet_delivery_batch_complete delivered=%d", delivered)
+            except Exception:
+                logger.exception("gsheet_delivery_job_error")
+        await report.run_if_due()
         await asyncio.sleep(settings.GSHEET_RETRY_INTERVAL_SECONDS)

@@ -66,6 +66,8 @@ Important files:
   recurring retention-message delivery.
 - `app/services/google_sheets.py`: worksheet format and invoice-ID deduplication.
 - `app/services/gsheet_delivery.py`: durable Sheets retry worker.
+- `app/services/gsheet_status_report.py`: daily club-access snapshot in the same Sheets loop.
+- `app/services/google_sheets_status.py`: atomic, dedicated status-worksheet replacement.
 - `app/bots/access_bot/handlers.py`: Telegram join-request decisions.
 - `migrations/versions/`: authoritative database history.
 - `tests/`: unit and route-level behavior tests.
@@ -332,6 +334,37 @@ uses Lava's payment timestamp when available and is formatted in UTC+3.
 Delivery is attempted immediately on the webhook and retried durably by a periodic worker.
 The worker processes at most the configured batch size and stops the current cycle after a
 failure to avoid hammering Google during a shared outage.
+
+#### Daily club status report
+
+The separate worksheet `Пользователи и статусы` (gid `1996613751`) in the same
+spreadsheet is a complete snapshot of all club entitlements, not a referral-payment log.
+It includes gifted/manual and expired access, and does not require a BotHelp profile or
+paid invoice. Users without a club entitlement are excluded. Validity and rounded-up days
+follow `/subscriptions/status`; inactive rows show zero days, active lifetime rows show
+`Бессрочно`. This is access state, NOT actual Telegram membership.
+
+`GSHEET_STATUS_SHEET_ID` (blank disables), `GSHEET_STATUS_SHEET_NAME`, and
+`GSHEET_STATUS_UPDATE_HOUR_MSK` (default 6) configure the report. The existing Sheets
+loop runs it even if referral payment delivery is disabled. It publishes immediately
+when the report is empty, then once per Moscow day at/after 06:00, within the existing
+five-minute polling interval. After downtime, the next pass catches up once.
+
+The header contains total/active/expired/lifetime counts, expirations within 7/30 days,
+and the last successful snapshot time. Data begins at row 8: Telegram ID, status,
+days remaining, expiry in Moscow time. Dates are native Sheets date-time cells, IDs
+are literal strings. Users are ordered active first, by shortest remaining term.
+The filter preserves existing criteria and sort settings during range updates.
+
+All A:D values and the success timestamp are replaced in one atomic Sheets batch;
+trailing old rows are cleared in that same batch, never a separate clear-then-write.
+Existing filters outside this sheet and the payment tab are not modified. The target
+must match BOTH the configured gid and title, and cannot have the payment tab's name.
+The timestamp in B2 survives application restarts. Failed reads/queries/writes leave
+the previous report intact and are retried on the next Sheets pass. No subscriptions,
+invoices, notification schedules, or BotHelp fields are mutated by this report.
+The report area is backend-owned: manual edits/deletions are overwritten on refresh,
+unlike manually deleted rows in the separate payment log.
 
 ## API surface
 
