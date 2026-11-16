@@ -350,13 +350,19 @@ loop runs it even if referral payment delivery is disabled. It publishes immedia
 when the report is empty, then once per Moscow day at/after 06:00, within the existing
 five-minute polling interval. After downtime, the next pass catches up once.
 
-The header contains total/active/expired/lifetime counts, expirations within 7/30 days,
-and the last successful snapshot time. Data begins at row 8: Telegram ID, status,
-days remaining, expiry in Moscow time. Dates are native Sheets date-time cells, IDs
+The header contains total/active/expired counts, expirations within 7/30 days,
+and the last successful snapshot time. The lifetime counter and per-user status
+column were removed at the user's request. Data begins at row 8 in A:C: Telegram ID,
+days remaining, expiry in Moscow time. Lifetime rows remain in the report and retain
+their `Бессрочно` values; no access is revoked. Dates are native Sheets date-time cells, IDs
 are literal strings. Users are ordered active first, by shortest remaining term.
-The filter preserves existing criteria and sort settings during range updates.
+The filter preserves existing criteria and sort settings during range updates. On
+the old four-column layout's first replacement, status filters/sorts are dropped and
+days/expiry criteria are shifted left once, detected by the old status header.
 
 All A:D values and the success timestamp are replaced in one atomic Sheets batch;
+the summary still uses four columns, but the detail table and filter use only A:C.
+Legacy date cells in D8:D and the fourth header background are cleared automatically;
 trailing old rows are cleared in that same batch, never a separate clear-then-write.
 Existing filters outside this sheet and the payment tab are not modified. The target
 must match BOTH the configured gid and title, and cannot have the payment tab's name.

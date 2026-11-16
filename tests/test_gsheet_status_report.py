@@ -202,11 +202,14 @@ def test_report_summary_and_dates():
             report.make_status_row(4, entitlement(active_until=NOW + timedelta(days=30)), NOW)]
     values = sheet_api.report_values(rows, NOW)
     assert values[2] == ["Всего пользователей", 4, "Активных", 3]
-    assert values[3] == ["Бессрочных", 1, "Истёкших", 1]
+    assert values[3] == ["Истёкших", 1]
     assert values[4] == ["Истекает за 7 дней", 1, "Истекает за 30 дней", 2]
-    assert values[8][2:] == ["Бессрочно", "Бессрочно"]
-    assert values[7][3].hour == 7
-    assert isinstance(sheet_api._cell(values[7][3])["userEnteredValue"]["numberValue"], float)
+    assert values[6] == ["Telegram ID", "Осталось дней", "Доступ до (МСК)"]
+    assert values[8][1:] == ["Бессрочно", "Бессрочно"]
+    assert values[7][2].hour == 7
+    assert isinstance(sheet_api._cell(values[7][2])["userEnteredValue"]["numberValue"], float)
+    assert all(len(row) == 3 for row in values[7:])
+    assert "Бессрочных" not in [value for row in values for value in row]
     assert sheet_api._cell("123")["userEnteredValue"] == {"stringValue": "123"}
 
 
@@ -223,6 +226,7 @@ def test_atomic_replacement_clears_stale_rows_and_scopes_every_request(num_users
     assert update["range"]["endRowIndex"] == max(1000, 7 + num_users, 8)
     assert len(update["rows"]) == 7 + num_users
     assert "userEnteredValue" in update["fields"]
+    assert next(r["setBasicFilter"]["filter"] for r in requests if "setBasicFilter" in r)["range"]["endColumnIndex"] == 3
     assert next(r["setBasicFilter"]["filter"] for r in requests if "setBasicFilter" in r)["criteria"] == criteria["criteria"]
     assert "addSheet" not in str(requests) and "appendCells" not in str(requests)
     for request in requests:
@@ -234,7 +238,8 @@ def test_atomic_replacement_clears_stale_rows_and_scopes_every_request(num_users
 def test_replace_is_one_batch_never_clear_then_write(monkeypatch):
     book = MagicMock()
     book.fetch_sheet_metadata.return_value = {"sheets": [{"properties": {"sheetId": 123}}]}
-    sheet = SimpleNamespace(id=123, row_count=1000, col_count=26)
+    sheet = SimpleNamespace(id=123, row_count=1000, col_count=26,
+                            get=lambda _: [["Telegram ID", "Статус клуба", "Осталось дней", "Доступ до (МСК)"]])
 
     @contextmanager
     def fake_sheet(_):
@@ -243,6 +248,32 @@ def test_replace_is_one_batch_never_clear_then_write(monkeypatch):
     monkeypatch.setattr(sheet_api, "_report_sheet", fake_sheet)
     sheet_api.replace_status_report(settings(), [], NOW)
     book.batch_update.assert_called_once()
+
+
+def test_removed_status_filter_is_dropped_and_other_filters_shift_left_once():
+    original = {
+        "criteria": {"1": {"hiddenValues": ["Истёк"]}, "2": {"hiddenValues": ["0"]}},
+        "filterSpecs": [
+            {"columnIndex": 1, "filterCriteria": {"hiddenValues": ["Истёк"]}},
+            {"columnIndex": 2, "filterCriteria": {"hiddenValues": ["0"]}},
+        ],
+        "sortSpecs": [{"dimensionIndex": 1, "sortOrder": "ASCENDING"},
+                      {"dimensionIndex": 3, "sortOrder": "DESCENDING"}],
+    }
+    result = sheet_api._report_filter(original, {"endColumnIndex": 3}, 10, True)
+    assert result["criteria"] == {"1": {"hiddenValues": ["0"]}}
+    assert result["filterSpecs"] == [{"columnIndex": 1, "filterCriteria": {"hiddenValues": ["0"]}}]
+    assert result["sortSpecs"] == [{"dimensionIndex": 2, "sortOrder": "DESCENDING"}]
+    assert "2" in original["criteria"]  # Input metadata must not be mutated.
+    assert sheet_api._report_filter(result, {"endColumnIndex": 3}, 10, False) == result
+
+
+def test_empty_report_still_has_three_headers_without_lifetime_summary():
+    values = sheet_api.report_values([], NOW)
+    assert len(values) == 7
+    assert values[2] == ["Всего пользователей", 0, "Активных", 0]
+    assert values[3] == ["Истёкших", 0]
+    assert values[6] == ["Telegram ID", "Осталось дней", "Доступ до (МСК)"]
 
 
 @pytest.mark.parametrize(("header", "expected"), [

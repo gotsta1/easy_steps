@@ -50,14 +50,12 @@ def report_values(rows: list[StatusRow], now: datetime) -> list[list]:
         [TITLE],
         ["Обновлено (МСК)", now.astimezone(MSK)],
         ["Всего пользователей", len(rows), "Активных", sum(row.active for row in rows)],
-        ["Бессрочных", sum(row.active and row.days is None for row in rows),
-         "Истёкших", sum(not row.active for row in rows)],
+        ["Истёкших", sum(not row.active for row in rows)],
         ["Истекает за 7 дней", sum(row.active and row.days is not None and row.days <= 7 for row in rows),
          "Истекает за 30 дней", sum(row.active and row.days is not None and row.days <= 30 for row in rows)],
         ["Источник: БД подписок. Статус доступа, не присутствие в Telegram-канале."],
-        ["Telegram ID", "Статус клуба", "Осталось дней", "Доступ до (МСК)"],
-        *[[str(row.telegram_user_id), "Активен" if row.active else "Истёк",
-           "Бессрочно" if row.days is None else row.days,
+        ["Telegram ID", "Осталось дней", "Доступ до (МСК)"],
+        *[[str(row.telegram_user_id), "Бессрочно" if row.days is None else row.days,
            row.expires_at.astimezone(MSK)
            if row.expires_at else ("Бессрочно" if row.active else "")]
           for row in rows],
@@ -75,15 +73,38 @@ def _cell(value) -> dict:
     return {"userEnteredValue": {"numberValue" if isinstance(value, int) else "stringValue": value}}
 
 
+def _report_filter(basic_filter: dict | None, header: dict, end_row: int,
+                   legacy_status_column: bool) -> dict:
+    result = {**(basic_filter or {}), "range": {**header, "endRowIndex": end_row}}
+    if not legacy_status_column:
+        return result
+    # Remove filters on the deleted status field; move days/expiry filters left.
+    column_map = {0: 0, 2: 1, 3: 2}
+    if "criteria" in result:
+        result["criteria"] = {
+            str(column_map[int(key)]): value for key, value in result["criteria"].items()
+            if int(key) in column_map
+        }
+    for name, index_field in (("filterSpecs", "columnIndex"), ("sortSpecs", "dimensionIndex")):
+        if name in result:
+            result[name] = [
+                {**spec, index_field: column_map[spec.get(index_field, 0)]}
+                for spec in result[name] if spec.get(index_field, 0) in column_map
+            ]
+    return result
+
+
 def build_report_requests(sheet_id: int, old_row_count: int, values: list[list],
-                          basic_filter: dict | None = None, old_col_count: int = 4) -> list[dict]:
+                          basic_filter: dict | None = None, old_col_count: int = 4,
+                          legacy_status_column: bool = False) -> list[dict]:
     row_count = max(old_row_count, len(values), HEADER_ROW + 2)
     all_cells = {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": row_count,
                  "startColumnIndex": 0, "endColumnIndex": 4}
-    header = {**all_cells, "startRowIndex": HEADER_ROW, "endRowIndex": HEADER_ROW + 1}
-    data_filter = {**(basic_filter or {}), "range": {
-        **header, "endRowIndex": max(len(values), HEADER_ROW + 2),
-    }}
+    # A:D remains managed for the four-column summary and clearing legacy D data.
+    header = {**all_cells, "startRowIndex": HEADER_ROW, "endRowIndex": HEADER_ROW + 1,
+              "endColumnIndex": 3}
+    data_filter = _report_filter(basic_filter, header, max(len(values), HEADER_ROW + 2),
+                                 legacy_status_column)
     dark = {"red": 0.08, "green": 0.24, "blue": 0.26}
     white = {"red": 1, "green": 1, "blue": 1}
     requests = [
@@ -135,6 +156,9 @@ def replace_status_report(settings: Settings, rows: list[StatusRow], now: dateti
         metadata = book.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),basicFilter)"})
         basic_filter = next(item.get("basicFilter") for item in metadata["sheets"]
                             if item["properties"]["sheetId"] == sheet.id)
+        header = sheet.get(f"A{HEADER_ROW + 1}:D{HEADER_ROW + 1}")
+        legacy_status_column = bool(header and len(header[0]) > 1
+                                    and header[0][1] == "Статус клуба")
         book.batch_update({"requests": build_report_requests(
-            sheet.id, sheet.row_count, values, basic_filter, sheet.col_count,
+            sheet.id, sheet.row_count, values, basic_filter, sheet.col_count, legacy_status_column,
         )})
