@@ -120,7 +120,8 @@ def build_report_requests(sheet_id: int, old_row_count: int, values: list[list],
         # Unfilled cells in this range are cleared by the SAME atomic request.
         {"updateCells": {"range": all_cells,
                          "fields": "userEnteredValue,userEnteredFormat.numberFormat",
-                         "rows": [{"values": [_cell(v) for v in row]} for row in values]}},
+                         "rows": [{"values": [_cell(v) for v in row + [""] * (4 - len(row))]}
+                                  for row in values]}},
         {"repeatCell": {"range": header, "cell": {"userEnteredFormat": {
             "backgroundColor": dark, "textFormat": {"bold": True, "foregroundColor": white},
         }}, "fields": "userEnteredFormat.backgroundColor,userEnteredFormat.textFormat"}},

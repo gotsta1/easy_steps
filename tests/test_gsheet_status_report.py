@@ -225,6 +225,10 @@ def test_atomic_replacement_clears_stale_rows_and_scopes_every_request(num_users
     update = next(req["updateCells"] for req in requests if "updateCells" in req)
     assert update["range"]["endRowIndex"] == max(1000, 7 + num_users, 8)
     assert len(update["rows"]) == 7 + num_users
+    assert all(len(row["values"]) == 4 for row in update["rows"])
+    assert update["rows"][6]["values"][3]["userEnteredValue"] == {"stringValue": ""}
+    assert all(row["values"][3]["userEnteredValue"] == {"stringValue": ""}
+               for row in update["rows"][7:])
     assert "userEnteredValue" in update["fields"]
     assert next(r["setBasicFilter"]["filter"] for r in requests if "setBasicFilter" in r)["range"]["endColumnIndex"] == 3
     assert next(r["setBasicFilter"]["filter"] for r in requests if "setBasicFilter" in r)["criteria"] == criteria["criteria"]
