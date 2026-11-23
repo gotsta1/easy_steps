@@ -93,7 +93,9 @@ async def get_offer_price_rub(api_key: str, offer_id: str, *, http_client=None) 
                 raise LavaAPIError(502, "invalid_product_catalog")
             matching = []
             for item in data["items"]:
-                product = item.get("data") if isinstance(item, dict) else None
+                # The live API also returns direct product objects, unlike the
+                # type/data wrapper described by Swagger.
+                product = item.get("data", item) if isinstance(item, dict) else None
                 if not isinstance(product, dict):
                     continue
                 matching.extend(offer for offer in product.get("offers") or []

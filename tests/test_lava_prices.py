@@ -50,6 +50,15 @@ async def test_catalog_resolves_exact_hidden_discount_offer():
         assert await get_offer_price_rub("key", "discount", http_client=client) == 695
 
 
+async def test_catalog_accepts_actual_direct_product_objects_from_live_api():
+    live_items = [product()["data"], product("discount", 695)["data"]]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(
+        200, json={"items": live_items},
+    ))) as client:
+        assert await get_offer_price_rub("key", "offer-month", http_client=client) == 1390
+        assert await get_offer_price_rub("key", "discount", http_client=client) == 695
+
+
 async def test_catalog_paginates_preserving_hidden_product_parameters():
     def handler(request):
         if "beforeCreatedAt" not in request.url.params:
