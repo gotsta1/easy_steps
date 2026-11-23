@@ -67,11 +67,18 @@ def random_retention_send_at(
     start_hour_msk: int,
     end_hour_msk: int,
     rng: random.Random | None = None,
+    *,
+    end_minute_msk: int = 0,
 ) -> datetime:
     """Choose and return a persisted random Moscow delivery time in UTC."""
     if min_days < 1 or max_days < min_days:
         raise ValueError("Invalid retention repeat day range")
-    if not 0 <= start_hour_msk < end_hour_msk <= 24:
+    if (
+        not 0 <= end_minute_msk < 60
+        or not 0 <= start_hour_msk <= end_hour_msk <= 24
+        or start_hour_msk * 60 >= end_hour_msk * 60 + end_minute_msk
+        or (end_hour_msk == 24 and end_minute_msk != 0)
+    ):
         raise ValueError("Invalid retention delivery hour range")
 
     source = rng or random.SystemRandom()
@@ -93,7 +100,7 @@ def random_retention_send_at(
     else:
         window_end = datetime.combine(
             target_date,
-            time(hour=end_hour_msk),
+            time(hour=end_hour_msk, minute=end_minute_msk),
             tzinfo=MOSCOW_TZ,
         )
     offset_seconds = source.randrange(int((window_end - window_start).total_seconds()))
@@ -117,11 +124,38 @@ def retention_message_is_due(
 
     last_sent_at = entitlement.retention_message_sent_at
     if last_sent_at is None or last_sent_at < retention_anchor:
-        return True
+        return (
+            entitlement.retention_next_message_at is None
+            or entitlement.retention_next_message_at <= now
+        )
     return bool(
         entitlement.retention_next_message_at is not None
         and entitlement.retention_next_message_at <= now
     )
+
+
+def _next_window_send_at(
+    not_before: datetime, start: int, end: int, end_minute: int = 0,
+) -> datetime:
+    """Randomize within the next available window, including late retries."""
+    if (
+        not 0 <= end_minute < 60
+        or not 0 <= start <= end <= 24
+        or start * 60 >= end * 60 + end_minute
+        or (end == 24 and end_minute != 0)
+    ):
+        raise ValueError("Invalid retention delivery window")
+    local = not_before.astimezone(MOSCOW_TZ)
+    window_start = datetime.combine(local.date(), time(hour=start), MOSCOW_TZ)
+    window_end = datetime.combine(local.date(), time.min, MOSCOW_TZ) + timedelta(
+        hours=end, minutes=end_minute,
+    )
+    if not_before >= window_end:
+        window_start += timedelta(days=1)
+        window_end += timedelta(days=1)
+    lower = max(not_before, window_start)
+    offset = random.SystemRandom().randrange(max(1, int((window_end - lower).total_seconds())))
+    return (lower + timedelta(seconds=offset)).astimezone(timezone.utc)
 
 
 def _retention_repeat_needs_scheduling(
@@ -223,6 +257,7 @@ async def _trigger_retention_message(
             settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
             settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
             settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
+            end_minute_msk=settings.BOTHELP_RETENTION_SEND_END_MINUTE_MSK,
         )
         await db.flush()
         logger.info(
@@ -231,6 +266,49 @@ async def _trigger_retention_message(
             entitlement.retention_next_message_at.isoformat(),
         )
         return False
+
+    last_sent_at = entitlement.retention_message_sent_at
+    anchor = _retention_anchor(entitlement, settings.KICK_GRACE_SECONDS)
+    scheduled = entitlement.retention_next_message_at
+    if (
+        not is_active_club(entitlement, now)
+        and anchor is not None
+        and anchor <= now - timedelta(hours=settings.BOTHELP_RETENTION_DELAY_HOURS)
+        and last_sent_at is not None
+        and last_sent_at >= anchor
+        and scheduled is not None
+    ):
+        local_now = now.astimezone(MOSCOW_TZ)
+        local_scheduled = scheduled.astimezone(MOSCOW_TZ)
+        local_last = last_sent_at.astimezone(MOSCOW_TZ)
+        earliest_date = local_last.date() + timedelta(days=settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS)
+        latest_date = local_last.date() + timedelta(days=settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS)
+        scheduled_minutes = local_scheduled.hour * 60 + local_scheduled.minute
+        start = settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK
+        end = settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK
+        end_minute = settings.BOTHELP_RETENTION_SEND_END_MINUTE_MSK
+        latest_window_available = (
+            latest_date > local_now.date()
+            or (
+                latest_date == local_now.date()
+                and local_now.hour * 60 + local_now.minute < end * 60 + end_minute
+            )
+        )
+        if (
+            local_scheduled.date() < earliest_date
+            or (latest_window_available and local_scheduled.date() > latest_date)
+            or not start * 60 <= scheduled_minutes < end * 60 + end_minute
+        ):
+            earliest = datetime.combine(earliest_date, time(hour=start), MOSCOW_TZ)
+            entitlement.retention_next_message_at = _next_window_send_at(
+                max(now, earliest), start, end, end_minute,
+            )
+            await db.flush()
+            logger.info(
+                "retention_repeat_rescheduled tg_id=%d next_at=%s",
+                user.telegram_user_id, entitlement.retention_next_message_at.isoformat(),
+            )
+            return False
 
     if not retention_message_is_due(
         entitlement,
@@ -242,28 +320,43 @@ async def _trigger_retention_message(
 
     last_sent_at = entitlement.retention_message_sent_at
     anchor = _retention_anchor(entitlement, settings.KICK_GRACE_SECONDS)
-    if last_sent_at is not None and anchor is not None and last_sent_at >= anchor:
-        earliest_repeat = datetime.combine(
-            last_sent_at.astimezone(MOSCOW_TZ).date()
-            + timedelta(days=settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS),
-            time(hour=settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK),
-            tzinfo=MOSCOW_TZ,
-        )
-        if now < earliest_repeat:
-            # Previously persisted two-day schedules must respect the new minimum.
-            entitlement.retention_next_message_at = random_retention_send_at(
-                last_sent_at,
-                settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
-                settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
-                settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
-                settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
-            )
+    if anchor is not None and (last_sent_at is None or last_sent_at < anchor):
+        start = settings.BOTHELP_RETENTION_FIRST_SEND_START_HOUR_MSK
+        end = settings.BOTHELP_RETENTION_FIRST_SEND_END_HOUR_MSK
+        if not 0 <= start < end <= 23:
+            raise ValueError("Invalid first retention delivery hour range")
+        local_now = now.astimezone(MOSCOW_TZ)
+        scheduled = entitlement.retention_next_message_at
+        if (
+            scheduled is None
+            or scheduled < anchor + timedelta(hours=settings.BOTHELP_RETENTION_DELAY_HOURS)
+            or not start <= scheduled.astimezone(MOSCOW_TZ).hour < end
+            or not start <= local_now.hour < end
+        ):
+            # Persist once, including after outages; never catch up outside the window.
+            entitlement.retention_next_message_at = _next_window_send_at(now, start, end)
             await db.flush()
-            logger.info(
-                "retention_message_rescheduled tg_id=%d next_at=%s",
-                user.telegram_user_id,
-                entitlement.retention_next_message_at.isoformat(),
-            )
+            return False
+    if last_sent_at is not None and anchor is not None and last_sent_at >= anchor:
+        local_now = now.astimezone(MOSCOW_TZ)
+        start = settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK
+        end = settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK
+        end_minute = settings.BOTHELP_RETENTION_SEND_END_MINUTE_MSK
+        # Late retries and old daytime schedules must not send outside the window.
+        window_start = datetime.combine(local_now.date(), time(hour=start), MOSCOW_TZ)
+        window_end = datetime.combine(local_now.date(), time.min, MOSCOW_TZ) + timedelta(
+            hours=end, minutes=end_minute,
+        )
+        scheduled = entitlement.retention_next_message_at
+        assert scheduled is not None
+        local_scheduled = scheduled.astimezone(MOSCOW_TZ)
+        scheduled_minutes = local_scheduled.hour * 60 + local_scheduled.minute
+        if (
+            not window_start <= now < window_end
+            or not start * 60 <= scheduled_minutes < end * 60 + end_minute
+        ):
+            entitlement.retention_next_message_at = _next_window_send_at(now, start, end, end_minute)
+            await db.flush()
             return False
 
     offer_available = (entitlement.retention_offers or 0) == 0
@@ -300,6 +393,7 @@ async def _trigger_retention_message(
         settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
         settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
         settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
+        end_minute_msk=settings.BOTHELP_RETENTION_SEND_END_MINUTE_MSK,
     )
     await db.flush()
     logger.info(
@@ -381,6 +475,11 @@ async def run_club_lifecycle_batch(settings: Settings) -> tuple[int, int]:
                 historical_first_send_cutoff,
                 now,
                 remaining,
+                repeat_min_days=settings.BOTHELP_RETENTION_REPEAT_MIN_DAYS,
+                repeat_max_days=settings.BOTHELP_RETENTION_REPEAT_MAX_DAYS,
+                start_hour=settings.BOTHELP_RETENTION_SEND_START_HOUR_MSK,
+                end_hour=settings.BOTHELP_RETENTION_SEND_END_HOUR_MSK,
+                end_minute=settings.BOTHELP_RETENTION_SEND_END_MINUTE_MSK,
             )
 
         for entitlement, user in stop_candidates:

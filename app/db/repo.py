@@ -215,8 +215,37 @@ class EntitlementRepo:
         historical_first_send_cutoff: datetime,
         now: datetime,
         limit: int,
+        *,
+        repeat_min_days: int = 3,
+        repeat_max_days: int = 3,
+        start_hour: int = 20,
+        end_hour: int = 21,
+        end_minute: int = 30,
     ) -> list[tuple[Entitlement, User]]:
         """Return current and historical club users due for retention."""
+        local_next = sa.func.timezone("Europe/Moscow", Entitlement.retention_next_message_at)
+        next_date = sa.cast(local_next, sa.Date)
+        last_date = sa.cast(sa.func.timezone("Europe/Moscow", Entitlement.retention_message_sent_at), sa.Date)
+        latest_date = last_date + repeat_max_days
+        local_now = sa.func.timezone("Europe/Moscow", now)
+        today = sa.cast(local_now, sa.Date)
+        now_minutes = sa.extract("hour", local_now) * 60 + sa.extract("minute", local_now)
+        latest_window_available = sa.or_(
+            latest_date > today,
+            sa.and_(latest_date == today, now_minutes < end_hour * 60 + end_minute),
+        )
+        next_minutes = sa.extract("hour", local_next) * 60 + sa.extract("minute", local_next)
+        outdated_repeat = sa.and_(
+            Entitlement.retention_message_sent_at >= sa.func.coalesce(
+                Entitlement.kicked_at, Entitlement.active_until,
+            ),
+            sa.or_(
+                next_date < last_date + repeat_min_days,
+                sa.and_(latest_window_available, next_date > latest_date),
+                next_minutes < start_hour * 60,
+                next_minutes >= end_hour * 60 + end_minute,
+            ),
+        )
         result = await self._db.execute(
             select(Entitlement, User)
             .join(User, User.id == Entitlement.user_id)
@@ -232,10 +261,9 @@ class EntitlementRepo:
                     ),
                 ),
                 sa.or_(
-                    Entitlement.retention_message_sent_at.is_(None),
-                    Entitlement.retention_message_sent_at < Entitlement.kicked_at,
                     Entitlement.retention_next_message_at.is_(None),
                     Entitlement.retention_next_message_at <= now,
+                    outdated_repeat,
                 ),
                 User.bothelp_subscriber_id.isnot(None),
             )

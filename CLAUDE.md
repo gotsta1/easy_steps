@@ -282,10 +282,14 @@ with the current threshold. Delivery follows the expiry worker polling interval.
 
 ### Club lifecycle and retention
 
-The club-lifecycle worker gives active-user mailing cleanup priority. Twelve days (288
-hours) after an actual successful Telegram kick, it starts retention messages while club
-access remains inactive. Repeats are persisted at a random time 3–4 calendar days later,
-between 06:00 and 24:00 Moscow time. Users with `retention_offers=0`
+The club-lifecycle worker gives active-user mailing cleanup priority. Seven full days (168
+hours) after an actual successful Telegram kick, it schedules the first retention message
+at a random time in the next available 20:00-22:00 Moscow window while club access remains
+inactive. This first-message window has separate FIRST_SEND settings; overdue attempts
+outside it move to the next evening. Both branches repeat every 3 Moscow calendar days,
+at a persisted random time between 20:00 and 21:30 Moscow time. The repeat window uses
+separate SEND settings, including `BOTHELP_RETENTION_SEND_END_MINUTE_MSK=30`.
+Users with `retention_offers=0`
 receive the three `BOTHELP_STEP_RETENTION_OFFER` steps in order; users with
 `retention_offers=1` receive the three `BOTHELP_STEP_RETENTION_USED` steps in order.
 After the third message the sequence starts again. `retention_next_message_at` stores
@@ -297,10 +301,14 @@ offer branch. An older `retention_message_sent_at` does not suppress the first m
 after a later kick. Configure all six BotHelp refs before enabling the new retention
 sequence on production.
 
-When processing a due repeat saved under the old two-day policy, the worker postpones
-it if the new minimum Moscow calendar date/time has not arrived. This preserves the
-message index and last-send marker and does not trigger an immediate resend. The
-12-day first-send cutoff also applies to existing users; no new DB migration is needed.
+The candidate query also selects outdated future repeat schedules, so existing two-/four-day
+or daytime schedules are reconciled without waiting for their old send time. Reconciliation
+preserves the message index and last-send marker and does not send immediately. Missed
+windows and late retries move to the next available evening rather than sending by day. The
+7-day first-send cutoff also applies to existing users; no new DB migration is needed.
+First-message schedules share `retention_next_message_at`; the candidate query respects
+future first-send schedules, avoiding starvation of due repeats. Existing sent cycles and
+their indexes are not reset; only incompatible repeat dates are adjusted.
 
 The BotHelp payment branch passes `plan=retention_1m` through the normal country,
 currency, payment-method, and `/payments/create` flow. The backend verifies eligibility
