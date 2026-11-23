@@ -24,7 +24,7 @@ from app.services.entitlements import (
     RETENTION_PLAN,
     EntitlementService,
 )
-from app.services.lava_api import LavaAPIError, create_invoice
+from app.services.lava_api import LavaAPIError, create_invoice, get_offer_price_rub, money_amount
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +262,8 @@ async def create_payment(
         if method == "SBP" and currency != "RUB":
             method = None
 
+        # Quote before POST: a catalog outage must not create an unmapped invoice.
+        rub_quote = await get_offer_price_rub(settings.LAVA_API_KEY, offer_id)
         result = await create_invoice(
             api_key=settings.LAVA_API_KEY,
             email=email,
@@ -285,6 +287,13 @@ async def create_payment(
             detail="Failed to create payment. Please try again.",
         ) from exc
 
+    invoice_amount_rub = rub_quote
+    if result.currency == "RUB" and result.amount is not None:
+        try:
+            invoice_amount_rub = money_amount(result.amount)
+        except ValueError:
+            logger.warning("invalid_invoice_rub_amount invoice=%s", result.invoice_id)
+
     # Store mapping so the webhook can resolve telegram_user_id.
     await repo.create(
         lava_invoice_id=result.invoice_id,
@@ -295,7 +304,7 @@ async def create_payment(
         cuid=body.cuid or None,
         first_name=body.first_name or None,
         ref=body.ref or None,
-        amount_rub=result.amount if result.currency == "RUB" else None,
+        amount_rub=invoice_amount_rub,
     )
 
     logger.info(

@@ -331,6 +331,23 @@ Rows are appended; deleted rows are not recreated after `gsheet_recorded_at` has
 The hidden column H contains `Invoice ID` and is used for deduplication. Payment date/time
 uses Lava's payment timestamp when available and is formatted in UTC+3.
 
+Amounts in the referral sheet are always RUB. Before creating an invoice, the backend
+fetches the exact configured offer's RUB price from Lava's `/api/v2/products`, including
+hidden offers and pagination. There is no static plan-price map and no price cache.
+`pending_invoices.amount_rub` stores the frozen RUB offer quote for USD/EUR payments,
+or the actual RUB checkout amount for RUB invoices. A successful RUB payment webhook
+updates it to the actual charged amount, including discounts. Foreign payment amounts
+are never mislabeled as RUB or converted using an invented exchange rate. The hidden
+retention product therefore uses its own RUB price (currently 695), not the normal offer.
+
+A failed/missing/ambiguous catalog quote stops invoice creation before the Lava POST,
+so no orphan invoice is created. A later price edit affects new quotes only, not past
+invoices or already exported rows. No new BotHelp request parameters are required.
+For legacy invoices with no RUB snapshot, delivery can recover an actual RUB charge
+only from that invoice's stored successful webhook. Otherwise it records a durable
+`missing_rub_price_snapshot` error rather than exporting a guessed price or zero.
+Legacy foreign invoices require an explicitly reviewed historical correction.
+
 Delivery is attempted immediately on the webhook and retried durably by a periodic worker.
 The worker processes at most the configured batch size and stops the current cycle after a
 failure to avoid hammering Google during a shared outage.

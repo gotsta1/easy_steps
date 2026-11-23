@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from app.api.routes import payments as payments_route
 from app.db.models import EntitlementStatus
@@ -88,6 +91,7 @@ def test_create_payment_trial_success_returns_payment_link(monkeypatch) -> None:
 
     monkeypatch.setattr(payments_route, "PendingInvoiceRepo", FakeRepo)
     monkeypatch.setattr(payments_route, "create_invoice", fake_create_invoice)
+    monkeypatch.setattr(payments_route, "get_offer_price_rub", AsyncMock(return_value=329))
 
     body = payments_route.CreatePaymentRequest(
         telegram_user_id=123456789,
@@ -150,6 +154,7 @@ def test_retention_payment_uses_hidden_discount_offer(monkeypatch) -> None:
     monkeypatch.setattr(payments_route, "PendingInvoiceRepo", FakePendingRepo)
     monkeypatch.setattr(payments_route, "EntitlementRepo", FakeEntitlementRepo)
     monkeypatch.setattr(payments_route, "create_invoice", fake_create_invoice)
+    monkeypatch.setattr(payments_route, "get_offer_price_rub", AsyncMock(return_value=695))
 
     response = asyncio.run(
         payments_route.create_payment(
@@ -208,3 +213,53 @@ def test_retention_payment_is_rejected_after_redemption(monkeypatch) -> None:
 
     assert response.ok is False
     assert response.error_code == "retention_offer_unavailable"
+
+
+@pytest.mark.parametrize("currency,charged,quote,expected", [
+    ("USD", 16.96, 1390, 1390), ("EUR", 15.57, 1490, 1490),
+    ("RUB", 695, 1390, 695), ("RUB", None, 1390, 1390),
+    ("RUB", float("nan"), 1390, 1390),
+])
+async def test_each_invoice_freezes_fresh_offer_quote_without_changing_checkout(
+    monkeypatch, currency, charged, quote, expected,
+):
+    repo = SimpleNamespace(create=AsyncMock())
+    monkeypatch.setattr(payments_route, "PendingInvoiceRepo", lambda _: repo)
+    lookup = AsyncMock(return_value=quote)
+    create = AsyncMock(return_value=SimpleNamespace(
+        invoice_id="new-invoice", payment_url="https://app.lava.top/payment", status="new",
+        amount=charged, currency=currency,
+    ))
+    monkeypatch.setattr(payments_route, "get_offer_price_rub", lookup)
+    monkeypatch.setattr(payments_route, "create_invoice", create)
+    # NaN is only testing persistence safety; the existing display formatter is independent.
+    if charged != charged:
+        monkeypatch.setattr(payments_route, "format_amount_display", lambda *_: None)
+    response = await payments_route.create_payment(
+        payments_route.CreatePaymentRequest(telegram_user_id=123, plan="1m", currency=currency),
+        _settings(), object(),
+    )
+    assert response.ok
+    assert repo.create.await_args.kwargs["amount_rub"] == expected
+    lookup.assert_awaited_once_with("lava_api_key", "offer_1m")
+    assert create.await_args.kwargs["currency"] == currency
+
+
+async def test_catalog_failure_never_creates_orphan_invoice(monkeypatch):
+    from fastapi import HTTPException
+    from app.services.lava_api import LavaAPIError
+
+    repo = SimpleNamespace(create=AsyncMock())
+    create = AsyncMock()
+    monkeypatch.setattr(payments_route, "PendingInvoiceRepo", lambda _: repo)
+    monkeypatch.setattr(payments_route, "get_offer_price_rub", AsyncMock(
+        side_effect=LavaAPIError(503, "product_catalog_unavailable")))
+    monkeypatch.setattr(payments_route, "create_invoice", create)
+    with pytest.raises(HTTPException) as error:
+        await payments_route.create_payment(
+            payments_route.CreatePaymentRequest(telegram_user_id=123, plan="1m", currency="USD"),
+            _settings(), object(),
+        )
+    assert error.value.status_code == 502
+    create.assert_not_awaited()
+    repo.create.assert_not_awaited()

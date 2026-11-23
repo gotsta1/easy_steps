@@ -137,3 +137,57 @@ async def test_deliver_invoice_records_failure(monkeypatch) -> None:
     assert succeeded is False
     assert invoice.gsheet_attempts == 1
     assert invoice.gsheet_last_error == "Google unavailable"
+
+
+@pytest.mark.parametrize("payload,expected_amount", [
+    ({"currency": "RUB", "amount": "1390"}, 1390),
+    ({"currency": "USD", "amount": "16.96"}, None),
+    (None, None), ({"currency": "RUB", "amount": "bad"}, None),
+])
+async def test_legacy_missing_amount_uses_only_actual_rub_event_not_today_price(
+    monkeypatch, payload, expected_amount,
+):
+    invoice = make_invoice()
+    invoice.amount_rub = None
+    invoice.plan = "1m"
+    repo = SimpleNamespace(mark_gsheet_recorded=AsyncMock(), mark_gsheet_failed=AsyncMock())
+    events = SimpleNamespace(latest_success_payload=AsyncMock(return_value=payload))
+    write = AsyncMock()
+    monkeypatch.setattr(gsheet_delivery, "PendingInvoiceRepo", lambda _: repo)
+    monkeypatch.setattr(gsheet_delivery, "LavaEventRepo", lambda _: events)
+    monkeypatch.setattr(gsheet_delivery.asyncio, "to_thread", write)
+    succeeded = await gsheet_delivery.deliver_invoice(object(), settings(), invoice)
+    assert succeeded is (expected_amount is not None)
+    if expected_amount is None:
+        write.assert_not_awaited()
+        repo.mark_gsheet_failed.assert_awaited_once()
+        assert "missing_rub_price_snapshot" in repo.mark_gsheet_failed.await_args.args[1]
+    else:
+        assert invoice.amount_rub == expected_amount
+        assert write.await_args.kwargs["amount"] == expected_amount
+
+
+async def test_frozen_foreign_price_is_exported_without_current_catalog_lookup(monkeypatch):
+    invoice = make_invoice()
+    invoice.plan = "1m"
+    invoice.amount_rub = 1390
+    repo = SimpleNamespace(mark_gsheet_recorded=AsyncMock())
+    write = AsyncMock()
+    def no_event_lookup(_):
+        raise AssertionError("A frozen price must not be recalculated")
+    monkeypatch.setattr(gsheet_delivery, "PendingInvoiceRepo", lambda _: repo)
+    monkeypatch.setattr(gsheet_delivery, "LavaEventRepo", no_event_lookup)
+    monkeypatch.setattr(gsheet_delivery.asyncio, "to_thread", write)
+    assert await gsheet_delivery.deliver_invoice(object(), settings(), invoice)
+    assert write.await_args.kwargs["amount"] == 1390
+
+
+async def test_legacy_price_lookup_is_invoice_scoped_and_success_only():
+    from app.db.repo import LavaEventRepo
+    db = AsyncMock()
+    await LavaEventRepo(db).latest_success_payload("invoice-123")
+    sql = str(db.scalar.await_args.args[0].compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
+    ))
+    assert "contractId" in sql and "invoice-123" in sql
+    assert "payment.success" in sql and "payment.failed" not in sql

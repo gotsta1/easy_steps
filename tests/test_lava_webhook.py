@@ -39,11 +39,18 @@ def test_regular_payment_does_not_mark_offer_redeemed() -> None:
     "referral,expected_export",
     [("ref_ref", True), ("tanya", False), (None, False)],
 )
-async def test_successful_webhook_exports_only_configured_referral(monkeypatch, referral, expected_export):
+@pytest.mark.parametrize("currency,amount,expected_rub", [
+    ("RUB", "695.00", 695), ("USD", "16.96", 1390),
+    ("RUB", "invalid", 1390), ("RUB", 0, 0),
+])
+async def test_successful_webhook_exports_only_configured_referral(
+    monkeypatch, referral, expected_export, currency, amount, expected_rub,
+):
     from app.api.routes import lava_webhook as route
     from app.services import gsheet_delivery
 
-    pending = SimpleNamespace(telegram_user_id=123, offer_id="offer-menu", plan="menu", ref=referral)
+    pending = SimpleNamespace(telegram_user_id=123, offer_id="offer-menu", plan="menu", ref=referral,
+                              amount_rub=1390)
     events = AsyncMock()
     events.exists.return_value = False
     invoices = AsyncMock()
@@ -61,9 +68,12 @@ async def test_successful_webhook_exports_only_configured_referral(monkeypatch, 
         LAVA_OFFER_MENU="offer-menu", GSHEET_REF="ref_ref", GSHEET_CREDENTIALS_PATH="test",
         GSHEET_SPREADSHEET_ID="test", GSHEET_SHEET_NAME="Sales",
     )
-    request = SimpleNamespace(json=AsyncMock(return_value={"contractId": "invoice-test"}))
+    request = SimpleNamespace(json=AsyncMock(return_value={
+        "contractId": "invoice-test", "currency": currency, "amount": amount,
+    }))
     result = await route.lava_webhook_handler(request, settings, AsyncMock(), AsyncMock())
 
     assert result == {"status": "ok"}
     invoices.mark_paid.assert_awaited_once()
     assert delivery.await_count == int(expected_export)
+    assert pending.amount_rub == expected_rub

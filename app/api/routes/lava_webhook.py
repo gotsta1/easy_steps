@@ -148,6 +148,13 @@ async def lava_webhook_handler(
             telegram_user_id = pending.telegram_user_id
             offer_id = pending.offer_id
             if action == "payment_success":
+                from app.services.lava_api import paid_amount_rub
+
+                # The actual RUB charge wins (including discounts). Foreign
+                # payments retain the offer's RUB quote frozen at invoice creation.
+                actual_rub = paid_amount_rub(payload)
+                if actual_rub is not None:
+                    pending.amount_rub = actual_rub
                 await pending_repo.mark_paid(
                     contract_id,
                     paid_at=_extract_payment_time(payload),

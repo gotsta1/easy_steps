@@ -262,6 +262,17 @@ class LavaEventRepo:
     def __init__(self, session: AsyncSession) -> None:
         self._db = session
 
+    async def latest_success_payload(self, invoice_id: str) -> dict | None:
+        return await self._db.scalar(
+            select(LavaEvent.payload_json)
+            .where(
+                LavaEvent.payload_json["contractId"].astext == invoice_id,
+                LavaEvent.event_type.in_(("payment.success", "subscription.recurring.payment.success")),
+            )
+            .order_by(LavaEvent.received_at.desc(), LavaEvent.id.desc())
+            .limit(1)
+        )
+
     async def exists(self, event_id: str) -> bool:
         result = await self._db.execute(
             select(LavaEvent.id).where(LavaEvent.event_id == event_id)

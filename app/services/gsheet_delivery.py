@@ -9,19 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models import PendingInvoice
-from app.db.repo import PendingInvoiceRepo
+from app.db.repo import LavaEventRepo, PendingInvoiceRepo
 from app.db.session import AsyncSessionFactory
 from app.services.google_sheets import append_sale
 from app.services.gsheet_status_report import StatusReportJob
+from app.services.lava_api import money_amount, paid_amount_rub
 
 logger = logging.getLogger(__name__)
-
-PLAN_PRICE_RUB: dict[str, float] = {
-    "1w": 329,
-    "1m": 1290,
-    "3m": 3490,
-    "6m": 6490,
-}
 
 
 def is_gsheet_configured(settings: Settings) -> bool:
@@ -40,14 +34,17 @@ async def deliver_invoice(
 ) -> bool:
     """Attempt one delivery and persist its result in the current transaction."""
     repo = PendingInvoiceRepo(db)
-    amount = (
-        invoice.amount_rub
-        if invoice.amount_rub is not None
-        else PLAN_PRICE_RUB.get(invoice.plan, 0)
-    )
     payment_time = invoice.paid_at or invoice.created_at
 
     try:
+        if invoice.amount_rub is None:
+            # Legacy RUB invoices can be recovered from a confirmed payment,
+            # not today's catalog. An old foreign invoice needs an audited repair.
+            payload = await LavaEventRepo(db).latest_success_payload(invoice.lava_invoice_id)
+            invoice.amount_rub = paid_amount_rub(payload or {})
+        if invoice.amount_rub is None:
+            raise ValueError("missing_rub_price_snapshot")
+        amount = money_amount(invoice.amount_rub)
         await asyncio.to_thread(
             append_sale,
             credentials_path=settings.GSHEET_CREDENTIALS_PATH,

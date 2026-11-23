@@ -188,6 +188,7 @@ class PendingInvoice(Base):
     cuid: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     first_name: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     ref: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Actual RUB charge, or the frozen offer price in RUB for a foreign-currency payment.
     amount_rub: Mapped[float | None] = mapped_column(sa.Float, nullable=True, default=None)
     paid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
